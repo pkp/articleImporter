@@ -23,6 +23,7 @@ use APP\author\Author;
 use APP\file\PublicFileManager;
 use APP\facades\Repo;
 use PKP\db\DAORegistry;
+use PKP\facades\Locale;
 
 abstract class BaseParser
 {
@@ -221,12 +222,12 @@ abstract class BaseParser
      */
     public function getLocale(?string $locale = null): string
     {
-        if ($locale && !\PKPLocale::isLocaleValid($locale)) {
+        if ($locale && !Locale::isLocaleValid($locale)) {
             $locale = strtolower($locale);
             // Tries to convert from recognized formats
-            $iso3 = \PKPLocale::getIso3FromIso1($locale) ?: \PKPLocale::getIso3FromLocale($locale);
+            $iso3 = Locale::getIso3FromIso1($locale) ?: Locale::getIso3FromLocale($locale);
             // If the language part of the locale is the same (ex. fr_FR and fr_CA), then gives preference to context's locale
-            $locale = $iso3 == \PKPLocale::getIso3FromLocale($this->_locale) ? $this->_locale : \PKPLocale::getLocaleFromIso3($iso3);
+            $locale = $iso3 == Locale::getIso3FromLocale($this->_locale) ? $this->_locale : Locale::getLocaleFromIso3($iso3);
         }
         return $locale ?: $this->_locale;
     }
