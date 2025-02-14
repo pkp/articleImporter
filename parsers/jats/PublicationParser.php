@@ -174,7 +174,7 @@ trait PublicationParser
     }
 
     /**
-     * Inserts the XML as a production ready file
+     * Inserts the XML as a JATS file
      */
     private function _insertXMLSubmissionFile(Publication $publication): void
     {
@@ -182,7 +182,7 @@ trait PublicationParser
         $filename = $splfile->getPathname();
 
         $genreId = Genre::GENRE_CATEGORY_DOCUMENT;
-        $fileStage = SubmissionFile::SUBMISSION_FILE_PRODUCTION_READY;
+        $fileStage = SubmissionFile::SUBMISSION_FILE_JATS;
         $userId = $this->getConfiguration()->getUser()->getId();
 
         $submission = $this->getSubmission();
