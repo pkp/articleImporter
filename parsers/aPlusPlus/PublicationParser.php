@@ -107,10 +107,24 @@ trait PublicationParser
         // Set public IDs
         $pubIdPlugins = false;
         foreach ($this->getPublicIds() as $type => $value) {
-            if ($type !== 'publisher-id' && !$pubIdPlugins) {
-                $pubIdPlugins = PluginRegistry::loadCategory('pubIds', true, $this->getContextId());
-            }
-            $publication->setData('pub-id::' . $type, $value);
+	    if ($type === 'doi') {
+		 $doiFound = Repo::doi()->getCollector()->filterByIdentifier($value)->getMany()->first();
+                 if ($doiFound) {
+                     $publication->setData('doiId', $doiFound->getId());
+                 } else {
+                     $newDoiObject = Repo::doi()->newDataObject([
+                         'doi' => $value,
+                         'contextId' => $this->getSubmission()->getData('contextId')
+                     ]);
+                     $doiId = Repo::doi()->add($newDoiObject);
+                     $publication->setData('doiId', $doiId);
+		}
+            } else {
+		if ($type !== 'publisher-id' && !$pubIdPlugins) {
+                    $pubIdPlugins = PluginRegistry::loadCategory('pubIds', true, $this->getContextId());
+                }
+                $publication->setData('pub-id::' . $type, $value);
+	    }
         }
 
         // Set copyright year and holder and license permissions
