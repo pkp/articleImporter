@@ -80,7 +80,7 @@ This plugin will need to be installed in your **OJS 3.2.1 or newer** installatio
 
 For example, to install this plugin via git for OJS 3.2.1:
 - `cd /path/to/ojs`
-- `git clone https://github.com/jonasraoni/article-importer-plugin.git plugins/importexport/articleImporter`
+- `git clone https://github.com/pkp/articleImporter plugins/importexport/articleImporter`
 - `cd plugins/importexport/articleImporter`
 - `git checkout -b stable-3_2_1 origin/stable-3_2_1`
 - `cd ../../..`
