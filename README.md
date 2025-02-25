@@ -74,7 +74,7 @@ xml/
 ```
 
 ### Plugin installation
-This plugin will need to be installed in your **OJS 3.2.1 or newer** installation:
+This plugin will need to be installed in your OJS installation:
 - Ensure that the plugin branch/version matches your version of OJS
 - The destination folder for the plugin should be `plugins/importexport/articleImporter`
 
