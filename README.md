@@ -82,7 +82,7 @@ For example, to install this plugin via git:
 - `cd /path/to/ojs`
 - `git clone https://github.com/pkp/articleImporter plugins/importexport/articleImporter`
 - `cd plugins/importexport/articleImporter`
-- `git checkout -b stable-3_3_0 origin/stable-3_3_0`
+- `git checkout -b stable-3_4_0 origin/stable-3_4_0`
 - `cd ../../..`
 - `php lib/pkp/tools/installPluginVersion.php plugins/importexport/articleImporter/version.xml`
 
