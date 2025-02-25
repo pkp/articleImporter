@@ -1,5 +1,5 @@
 # OJS Article Importer Plugin
-Plugin to import A++ and JATS articles up to OJS 3.3.0
+Plugin to import A++ and JATS articles up to OJS 3.5.0
 
 ## Requirements
 
@@ -74,15 +74,15 @@ xml/
 ```
 
 ### Plugin installation
-This plugin will need to be installed in your **OJS 3.2.1 or newer** installation:
+This plugin will need to be installed in your OJS installation:
 - Ensure that the plugin branch/version matches your version of OJS
 - The destination folder for the plugin should be `plugins/importexport/articleImporter`
 
-For example, to install this plugin via git for OJS 3.2.1:
+For example, to install this plugin via git:
 - `cd /path/to/ojs`
 - `git clone https://github.com/pkp/articleImporter plugins/importexport/articleImporter`
 - `cd plugins/importexport/articleImporter`
-- `git checkout -b stable-3_2_1 origin/stable-3_2_1`
+- `git checkout -b stable-3_5_0 origin/stable-3_5_0`
 - `cd ../../..`
 - `php lib/pkp/tools/installPluginVersion.php plugins/importexport/articleImporter/version.xml`
 
