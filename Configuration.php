@@ -47,6 +47,8 @@ class Configuration
     private array $_imageExt;
     /** @var string base filename for issue covers */
     private string $_issueCoverFilename;
+    /** @var bool use category as section */
+    private $_canUseCategoryAsSection = true;
 
     /**
      * Constructor
@@ -217,5 +219,13 @@ class Configuration
     public function getIssueCoverFilename(): string
     {
         return $this->_issueCoverFilename;
+    }
+
+    /**
+     * Retrieves whether the category can be used as a section
+     */
+    public function canUseCategoryAsSection(): bool
+    {
+        return $this->_canUseCategoryAsSection;
     }
 }
