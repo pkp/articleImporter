@@ -18,6 +18,7 @@ import('lib.pkp.classes.plugins.ImportExportPlugin');
 import('lib.pkp.classes.submission.SubmissionFile');
 import('lib.pkp.classes.file.FileManager');
 
+use IssueDAO;
 use PKP\Plugins\ImportExport\ArticleImporter\Exceptions\ArticleSkippedException;
 
 class ArticleImporterPlugin extends \ImportExportPlugin
@@ -51,6 +52,7 @@ class ArticleImporterPlugin extends \ImportExportPlugin
     public function executeCLI($scriptName, &$args): void
     {
         ini_set('memory_limit', -1);
+        ini_set('assert.exception', 0);
         \SessionManager::getManager();
         // Disable the time limit
         set_time_limit(0);
@@ -100,9 +102,6 @@ class ArticleImporterPlugin extends \ImportExportPlugin
 
             \PluginRegistry::loadCategory('pubIds', true, $configuration->getContext()->getId());
 
-            $sectionDao = \Application::getSectionDAO();
-            $lastIssueId = null;
-
             // Iterates through all the found article entries, already sorted by ascending volume > issue > article
             $iterator = $configuration->getArticleIterator();
             $count = count($iterator);
@@ -110,7 +109,7 @@ class ArticleImporterPlugin extends \ImportExportPlugin
                 $article = implode('-', [$entry->getVolume(), $entry->getIssue(), $entry->getArticle()]);
                 try {
                     // Process the article
-                    $parser = $entry->process($configuration);
+                    $entry->process($configuration);
                     ++$imported;
                     $this->_writeLine(__('plugins.importexport.articleImporter.articleImported', ['article' => $article]));
                 } catch (ArticleSkippedException $e) {
@@ -140,6 +139,7 @@ class ArticleImporterPlugin extends \ImportExportPlugin
     public function resequenceIssues(Configuration $configuration): void
     {
         $contextId = $configuration->getContext()->getId();
+        /** @var IssueDAO */
         $issueDao = \DAORegistry::getDAO('IssueDAO');
         // Clears previous ordering
         $issueDao->deleteCustomIssueOrdering($contextId);
@@ -153,7 +153,7 @@ class ArticleImporterPlugin extends \ImportExportPlugin
         ])
             ->getQuery()
             ->orderBy('volume', 'DESC')
-            ->orderBy('number', 'DESC')
+            ->orderByRaw('CAST(number AS UNSIGNED) DESC')
             ->select('i.issue_id')
             ->pluck('i.issue_id');
         $sequence = 0;
@@ -166,7 +166,7 @@ class ArticleImporterPlugin extends \ImportExportPlugin
         // Sets latest issue as the current one
         $latestIssue = \Services::get('issue')->get($latestIssue);
         $latestIssue->setData('current', true);
-        $issueDao->updateCurrent($configuration->getContext()->getId(), $latestIssue);
+        $issueDao->updateCurrent($contextId, $latestIssue);
     }
 
     /**
