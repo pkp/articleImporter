@@ -35,7 +35,8 @@ class ArticleImporterPlugin extends ImportExportPlugin
     public function executeCLI($scriptName, &$args): void
     {
         ini_set('memory_limit', -1);
-        SessionManager::getManager();
+        ini_set('assert.exception', 0);
+        \SessionManager::getManager();
         // Disable the time limit
         set_time_limit(0);
 
@@ -84,8 +85,6 @@ class ArticleImporterPlugin extends ImportExportPlugin
 
             PluginRegistry::loadCategory('pubIds', true, $configuration->getContext()->getId());
 
-            $lastIssueId = null;
-
             // Iterates through all the found article entries, already sorted by ascending volume > issue > article
             $iterator = $configuration->getArticleIterator();
             $count = count($iterator);
@@ -93,7 +92,7 @@ class ArticleImporterPlugin extends ImportExportPlugin
                 $article = implode('-', [$entry->getVolume(), $entry->getIssue(), $entry->getArticle()]);
                 try {
                     // Process the article
-                    $parser = $entry->process($configuration);
+                    $entry->process($configuration);
                     ++$imported;
                     $this->_writeLine(__('plugins.importexport.articleImporter.articleImported', ['article' => $article]));
                 } catch (ArticleSkippedException $e) {
@@ -123,7 +122,7 @@ class ArticleImporterPlugin extends ImportExportPlugin
     public function resequenceIssues(Configuration $configuration): void
     {
         $contextId = $configuration->getContext()->getId();
-
+        $issueDao = \DAORegistry::getDAO('IssueDAO');
         // Clears previous ordering
         Repo::issue()->dao->deleteCustomIssueOrdering($contextId);
 
@@ -134,7 +133,7 @@ class ArticleImporterPlugin extends ImportExportPlugin
 	    ->orderBy($issueCollector::ORDERBY_SEQUENCE)
 	    ->getQueryBuilder()
             ->orderBy('volume', 'DESC')
-            ->orderBy('number', 'DESC')
+            ->orderByRaw('CAST(number AS UNSIGNED) DESC')
             ->select('i.issue_id')
             ->pluck('i.issue_id');
         $sequence = 0;
@@ -147,7 +146,7 @@ class ArticleImporterPlugin extends ImportExportPlugin
         // Sets latest issue as the current one
         $latestIssue = Repo::issue()->get($latestIssue);
         $latestIssue->setData('current', true);
-        Repo::issue()->updateCurrent($configuration->getContext()->getId(), $latestIssue);
+        Repo::issue()->updateCurrent($contextId, $latestIssue);
     }
 
     /**
