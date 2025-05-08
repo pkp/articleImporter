@@ -41,6 +41,8 @@ abstract class BaseParser
     private string $_locale;
     /** @var int[] cache of genres by context id and extension */
     private array $_cachedGenres;
+    /** @var string[] */
+    private $_usedLocales = [];
 
     /**
      * Constructor
@@ -142,6 +144,7 @@ abstract class BaseParser
 
         $this->_xpath = new \DOMXPath($this->_document);
         $this->_xpath->registerNamespace('xlink', 'http://www.w3.org/1999/xlink');
+        $this->_locale = $this->getLocale($this->selectText('@xml:lang'));
         return $this;
     }
 
@@ -229,7 +232,13 @@ abstract class BaseParser
             // If the language part of the locale is the same (ex. fr_FR and fr_CA), then gives preference to context's locale
             $locale = $iso3 == Locale::getIso3FromLocale($this->_locale) ? $this->_locale : Locale::getLocaleFromIso3($iso3);
         }
-        return $locale ?: $this->_locale;
+        $locale = $locale ?: $this->_locale;
+        return $this->_usedLocales[$locale] = $locale;
+    }
+
+    public function getUsedLocales(): array
+    {
+        return $this->_usedLocales;
     }
 
     /**
