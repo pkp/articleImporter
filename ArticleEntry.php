@@ -20,23 +20,23 @@ class ArticleEntry
     /** @var \SplFileInfo[] List of files */
     private array $_files = [];
 
-    /** @var int The article's number */
+    /** @var int The issue's volume */
     private int $_volume;
 
-    /** @var int The issue's number */
+    /** @var string The issue's number */
     private int $_issue;
 
-    /** @var int The issue's volume */
+    /** @var string The article's number */
     private int $_article;
 
     /**
      * Constructor
      *
      * @param int $volume The issue's volume
-     * @param int $issue The issue's number
-     * @param int $article The article's number
+     * @param string $issue The issue's number
+     * @param string $article The article's number
      */
-    public function __construct(int $volume, int $issue, int $article)
+    public function __construct(int $volume, string $issue, string $article)
     {
         $this->_volume = $volume;
         $this->_issue = $issue;
@@ -72,7 +72,7 @@ class ArticleEntry
     /**
      * Retrieves the issue number
      */
-    public function getIssue(): int
+    public function getIssue(): string
     {
         return $this->_issue;
     }
@@ -80,7 +80,7 @@ class ArticleEntry
     /**
      * Retrieves the article number
      */
-    public function getArticle(): int
+    public function getArticle(): string
     {
         return $this->_article;
     }
