@@ -12,6 +12,8 @@
 
 namespace APP\plugins\importexport\articleImporter;
 
+use FilesystemIterator;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use APP\plugins\importexport\articleImporter\exceptions\InvalidDocTypeException;
 use APP\plugins\importexport\articleImporter\exceptions\NoSuitableParserException;
 
@@ -86,27 +88,19 @@ class ArticleEntry
     }
 
     /**
-     * Returns the path to the folder containing the article files
-     */
-    public function getSubmissionPathInfo(): \SplFileInfo
-    {
-        return $this->getSubmissionFile()->getPathInfo();
-    }
-
-    /**
      * Retrieves the submission file
      *
      * @throws \Exception Throws if there's more than one submission file
      */
-    public function getSubmissionFile(): \SplFileInfo
+    public function getSubmissionFile(): ?\SplFileInfo
     {
         $count = count($paths = array_filter($this->_files, function ($path) {
             return preg_match('/\.pdf$/i', $path);
         }));
-        if ($count != 1) {
+        if ($count > 1) {
             throw new \Exception(__('plugins.importexport.articleImporter.unexpectedGalley', ['count' => $count]));
         }
-        return reset($paths);
+        return reset($paths) ?: null;
     }
 
     /**
@@ -117,7 +111,7 @@ class ArticleEntry
     public function getMetadataFile(): \SplFileInfo
     {
         $count = count($paths = array_filter($this->_files, function ($path) {
-            return preg_match('/\.(meta|xml)$/i', $path);
+            return preg_match('/\.xml$/i', $path);
         }));
         if ($count != 1) {
             throw new \Exception(__('plugins.importexport.articleImporter.unexpectedMetadata', ['count' => $count]));
@@ -150,19 +144,25 @@ class ArticleEntry
      * Retrieves the HTML galley file
      *
      * @throws \Exception Throws if there's more than one
+     * @return \SplFileInfo[]
      */
-    public function getHtmlFile(): ?\SplFileInfo
+    public function getHtmlFiles(): array
     {
-        $count = count($paths = array_filter($this->_files, function ($path) {
-            return preg_match('/\.html$/i', $path);
+        return array_values(array_filter($this->_files, function ($path) {
+            return preg_match('/\.html?$/i', $path);
         }));
-        if ($count > 1) {
-            throw new \Exception(__('plugins.importexport.articleImporter.unexpectedMetadata', ['count' => $count]));
-        }
-        return reset($paths) ?: null;
     }
 
-	/**
+    /**
+     * Reloads the immediate files, this is used after generating HTML files out of a JATS body tag
+     */
+    public function reloadFiles(): void
+    {
+        $iterator = new FilesystemIterator($this->getMetadataFile()->getPathInfo(), FilesystemIterator::CURRENT_AS_FILEINFO | FilesystemIterator::SKIP_DOTS);
+        $this->_files = array_values(iterator_to_array($iterator));
+    }
+
+    /**
      * Retrieves the cover file
      *
      * @throws \Exception Throws if there's more than one cover file
@@ -176,5 +176,16 @@ class ArticleEntry
             throw new \Exception(__('plugins.importexport.articleImporter.unexpectedMetadata', ['count' => $count]));
         }
         return reset($paths) ?: null;
+    }
+
+    /**
+     * Retrieve the supplementary files
+     * @return \SplFileInfo[]
+     */
+    public function getSupplementaryFiles(): array
+    {
+        return is_dir($path = $this->getMetadataFile()->getPathInfo() . '/supplementary')
+            ? array_values(iterator_to_array(new FilesystemIterator($path)))
+            : [];
     }
 }
