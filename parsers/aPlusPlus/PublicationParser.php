@@ -2,8 +2,8 @@
 /**
  * @file parsers/aPlusPlus/PublicationParser.php
  *
- * Copyright (c) 2014-2025 Simon Fraser University
- * Copyright (c) 2000-2025 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class PublicationParser
@@ -14,7 +14,9 @@ namespace APP\plugins\importexport\articleImporter\parsers\aPlusPlus;
 
 use APP\plugins\importexport\articleImporter\ArticleImporterPlugin;
 
-use APP\services\SubmissionFileService;
+use DateTimeImmutable;
+use Exception;
+use PKP\core\Core;
 use PKP\Services\PKPFileService;
 use APP\publication\Publication;
 use PKP\db\DAORegistry;
@@ -24,6 +26,8 @@ use APP\core\Application;
 use PKP\i18n\LocaleConversion;
 use APP\core\Services;
 use APP\facades\Repo;
+use PKP\submission\SubmissionKeywordDAO;
+use PKP\submissionFile\SubmissionFile;
 
 trait PublicationParser
 {
@@ -50,7 +54,7 @@ trait PublicationParser
         $firstPage = $this->selectText('Journal/Volume/Issue/Article/ArticleInfo/ArticleFirstPage');
         $lastPage = $this->selectText('Journal/Volume/Issue/Article/ArticleInfo/ArticleLastPage');
         if ($firstPage || $lastPage) {
-            $publication->setData('pages', "${firstPage}" . ($lastPage ? "-${lastPage}" : ''));
+            $publication->setData('pages', "{$firstPage}" . ($lastPage ? "-{$lastPage}" : ''));
         }
 
         $hasTitle = false;
@@ -69,7 +73,7 @@ trait PublicationParser
         }
 
         if (!$hasTitle) {
-            throw new \Exception(__('plugins.importexport.articleImporter.articleTitleMissing'));
+            throw new Exception(__('plugins.importexport.articleImporter.articleTitleMissing'));
         }
 
         $publication->setData('locale', $publicationLocale);
@@ -89,7 +93,7 @@ trait PublicationParser
                 }
                 // Transforms the known tags, the remaining ones will be stripped
                 if ($node->nodeName == 'Heading') {
-                    return "<p><strong>${content}</strong></p>";
+                    return "<p><strong>{$content}</strong></p>";
                 }
                 $tag = [
                     'Emphasis' => 'em',
@@ -97,7 +101,7 @@ trait PublicationParser
                     'Superscript' => 'sup',
                     'Para' => 'p'
                 ][$node->nodeName] ?? null;
-                return $tag ? "<${tag}>${content}</${tag}>" : $content;
+                return $tag ? "<{$tag}>{$content}</{$tag}>" : $content;
             }));
             if ($value) {
                 $publication->setData('abstract', $value, $this->getLocale($abstract->getAttribute('Language')));
@@ -107,24 +111,24 @@ trait PublicationParser
         // Set public IDs
         $pubIdPlugins = false;
         foreach ($this->getPublicIds() as $type => $value) {
-	    if ($type === 'doi') {
-		 $doiFound = Repo::doi()->getCollector()->filterByIdentifier($value)->getMany()->first();
-                 if ($doiFound) {
-                     $publication->setData('doiId', $doiFound->getId());
-                 } else {
-                     $newDoiObject = Repo::doi()->newDataObject([
-                         'doi' => $value,
-                         'contextId' => $this->getSubmission()->getData('contextId')
-                     ]);
-                     $doiId = Repo::doi()->add($newDoiObject);
-                     $publication->setData('doiId', $doiId);
-		}
+            if ($type === 'doi') {
+                $doiFound = Repo::doi()->getCollector()->filterByIdentifier($value)->getMany()->first();
+                if ($doiFound) {
+                    $publication->setData('doiId', $doiFound->getId());
+                } else {
+                    $newDoiObject = Repo::doi()->newDataObject([
+                        'doi' => $value,
+                        'contextId' => $this->getSubmission()->getData('contextId')
+                    ]);
+                    $doiId = Repo::doi()->add($newDoiObject);
+                    $publication->setData('doiId', $doiId);
+                }
             } else {
-		if ($type !== 'publisher-id' && !$pubIdPlugins) {
+                if ($type !== 'publisher-id' && !$pubIdPlugins) {
                     $pubIdPlugins = PluginRegistry::loadCategory('pubIds', true, $this->getContextId());
                 }
                 $publication->setData('pub-id::' . $type, $value);
-	    }
+            }
         }
 
         // Set copyright year and holder and license permissions
@@ -134,10 +138,10 @@ trait PublicationParser
         $publication->setData('licenseUrl', null);
 
         // Inserts the publication and updates the submission's publication ID
-	Repo::publication()->dao->insert($publication);
-	$submission = $this->getSubmission();
-	$submission->setData('currentPublicationId', $publication->getId());
-	Repo::submission()->edit($submission, []);
+        Repo::publication()->dao->insert($publication);
+        $submission = $this->getSubmission();
+        $submission->setData('currentPublicationId', $publication->getId());
+        Repo::submission()->edit($submission, []);
 
         $this->_processKeywords($publication);
         $this->_processAuthors($publication);
@@ -180,13 +184,11 @@ trait PublicationParser
         $newGalleyId = Repo::galley()->add($galley);
 
         // Add the PDF file and link galley with submission file
-        /** @var SubmissionFileService $submissionFileService */
-        $submissionFileService = Services::get('submissionFile');
         /** @var PKPFileService $fileService */
         $fileService = Services::get('file');
         $submission = $this->getSubmission();
 
-        $submissionDir = $submissionFileService->getSubmissionDir($submission->getData('contextId'), $submission->getId());
+        $submissionDir = Repo::submissionFile()->getSubmissionDir($submission->getData('contextId'), $submission->getId());
         $newFileId = $fileService->add(
             $file->getPathname(),
             $submissionDir . '/' . uniqid() . '.pdf'
@@ -196,14 +198,14 @@ trait PublicationParser
         $newSubmissionFile->setData('submissionId', $submission->getId());
         $newSubmissionFile->setData('fileId', $newFileId);
         $newSubmissionFile->setData('genreId', $this->getConfiguration()->getSubmissionGenre()->getId());
-        $newSubmissionFile->setData('fileStage', \SUBMISSION_FILE_PROOF);
+        $newSubmissionFile->setData('fileStage', SubmissionFile::SUBMISSION_FILE_PROOF);
         $newSubmissionFile->setData('uploaderUserId', $this->getConfiguration()->getEditor()->getId());
-        $newSubmissionFile->setData('createdAt', \Core::getCurrentDate());
-        $newSubmissionFile->setData('updatedAt', \Core::getCurrentDate());
-        $newSubmissionFile->setData('assocType', \ASSOC_TYPE_REPRESENTATION);
+        $newSubmissionFile->setData('createdAt', Core::getCurrentDate());
+        $newSubmissionFile->setData('updatedAt', Core::getCurrentDate());
+        $newSubmissionFile->setData('assocType', Application::ASSOC_TYPE_REPRESENTATION);
         $newSubmissionFile->setData('assocId', $newGalleyId);
         $newSubmissionFile->setData('name', $filename, $this->getLocale());
-        $submissionFileService->add($newSubmissionFile, \Application::get()->getRequest());
+        Repo::submissionFile()->add($newSubmissionFile);
 
         $galley = Repo::galley()->get($newGalleyId);
         $galley->setData('submissionFileId', $newSubmissionFile->getData('fileId'));
@@ -232,12 +234,12 @@ trait PublicationParser
     /**
      * Retrieves the publication date
      */
-    public function getPublicationDate(): \DateTimeImmutable
+    public function getPublicationDate(): DateTimeImmutable
     {
         $date = $this->getDateFromNode($this->selectFirst('Journal/Volume/Issue/Article/ArticleInfo/ArticleHistory/OnlineDate'))
             ?: $this->getIssuePublicationDate();
         if (!$date) {
-            throw new \Exception(__('plugins.importexport.articleImporter.missingPublicationDate'));
+            throw new Exception(__('plugins.importexport.articleImporter.missingPublicationDate'));
         }
         return $date;
     }
@@ -245,8 +247,9 @@ trait PublicationParser
     /**
      * Process the article keywords
      */
-    private function _processKeywords(\Publication $publication): void
+    private function _processKeywords(Publication $publication): void
     {
+        /** @var SubmissionKeywordDAO */
         $submissionKeywordDAO = DAORegistry::getDAO('SubmissionKeywordDAO');
         $keywords = [];
         foreach ($this->select('Journal/Volume/Issue/Article/ArticleHeader/KeywordGroup') as $node) {

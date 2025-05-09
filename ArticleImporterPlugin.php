@@ -2,8 +2,8 @@
 /**
  * @file ArticleImporterPlugin.php
  *
- * Copyright (c) 2014-2025 Simon Fraser University
- * Copyright (c) 2000-2025 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class ArticleImporterPlugin
@@ -12,15 +12,16 @@
 
 namespace APP\plugins\importexport\articleImporter;
 
+use APP\journal\JournalDAO;
 use APP\plugins\importexport\articleImporter\exceptions\ArticleSkippedException;
 
+use Exception;
 use PKP\session\SessionManager;
 use PKP\core\Registry;
 use PKP\db\DAORegistry;
 use PKP\plugins\Hook;
 use APP\core\Application;
 use APP\core\PageRouter;
-use APP\core\Services;
 use PKP\plugins\PluginRegistry;
 use PKP\plugins\ImportExportPlugin;
 use APP\facades\Repo;
@@ -36,7 +37,7 @@ class ArticleImporterPlugin extends ImportExportPlugin
     {
         ini_set('memory_limit', -1);
         ini_set('assert.exception', 0);
-        \SessionManager::getManager();
+        SessionManager::getManager();
         // Disable the time limit
         set_time_limit(0);
 
@@ -68,7 +69,7 @@ class ArticleImporterPlugin extends ImportExportPlugin
             $user = $configuration->getUser();
             Registry::set('user', $user);
 
-            /** @var JournalDAO  */
+            /** @var JournalDAO */
             $journalDao = DAORegistry::getDAO('JournalDAO');
             $journal = $journalDao->getByPath($contextPath);
             // Set global context
@@ -98,7 +99,7 @@ class ArticleImporterPlugin extends ImportExportPlugin
                 } catch (ArticleSkippedException $e) {
                     $this->_writeLine(__('plugins.importexport.articleImporter.articleSkipped', ['article' => $article, 'message' => $e->getMessage()]));
                     ++$skipped;
-                } catch (\Exception $e) {
+                } catch (Exception $e) {
                     $this->_writeLine(__('plugins.importexport.articleImporter.articleSkipped', ['article' => $article, 'message' => $e->getMessage()]));
                     ++$failed;
                 }
@@ -110,7 +111,7 @@ class ArticleImporterPlugin extends ImportExportPlugin
             }
 
             $this->_writeLine(__('plugins.importexport.articleImporter.importEnd'));
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             $this->_writeLine(__('plugins.importexport.articleImporter.importError', ['message' => $e->getMessage()]));
         }
         $this->_writeLine(__('plugins.importexport.articleImporter.importStatus', ['count' => $count, 'imported' => $imported, 'failed' => $failed, 'skipped' => $skipped]));
@@ -122,20 +123,19 @@ class ArticleImporterPlugin extends ImportExportPlugin
     public function resequenceIssues(Configuration $configuration): void
     {
         $contextId = $configuration->getContext()->getId();
-        $issueDao = \DAORegistry::getDAO('IssueDAO');
         // Clears previous ordering
         Repo::issue()->dao->deleteCustomIssueOrdering($contextId);
 
         // Retrieves issue IDs sorted by volume and number
-	$issueCollector = Repo::issue()->getCollector();
+        $issueCollector = Repo::issue()->getCollector();
         $rsIssues = $issueCollector->filterByContextIds([$contextId])
-	    ->filterByPublished(true)
-	    ->orderBy($issueCollector::ORDERBY_SEQUENCE)
-	    ->getQueryBuilder()
-            ->orderBy('volume', 'DESC')
-            ->orderByRaw('CAST(number AS UNSIGNED) DESC')
-            ->select('i.issue_id')
-            ->pluck('i.issue_id');
+            ->filterByPublished(true)
+            ->orderBy($issueCollector::ORDERBY_SEQUENCE)
+            ->getQueryBuilder()
+                ->orderBy('volume', 'DESC')
+                ->orderByRaw('CAST(number AS UNSIGNED) DESC')
+                ->select('i.issue_id')
+                ->pluck('i.issue_id');
         $sequence = 0;
         $latestIssue = null;
         foreach ($rsIssues as $id) {
@@ -151,12 +151,10 @@ class ArticleImporterPlugin extends ImportExportPlugin
 
     /**
      * Outputs a message with a line break
-     *
-     * @param string $message
      */
-    private function _writeLine($message): void
+    private function _writeLine(?string $message): void
     {
-        echo $message, \PHP_EOL;
+        echo $message, PHP_EOL;
         flush();
     }
 

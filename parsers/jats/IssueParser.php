@@ -2,8 +2,8 @@
 /**
  * @file parsers/jats/IssueParser.php
  *
- * Copyright (c) 2014-2025 Simon Fraser University
- * Copyright (c) 2000-2025 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class IssueParser
@@ -15,7 +15,9 @@ namespace APP\plugins\importexport\articleImporter\parsers\jats;
 use APP\plugins\importexport\articleImporter\ArticleImporterPlugin;
 
 use APP\issue\Issue;
-use PKP\db\DAORegistry;
+use DateTimeImmutable;
+use DOMDocument;
+use DOMXPath;
 use APP\facades\Repo;
 
 trait IssueParser
@@ -94,10 +96,10 @@ trait IssueParser
 
         // If this issue exists, return it
         $issues = Repo::issue()->getCollector()
-	    ->filterByContextIds([$this->getContextId()])
-	    ->filterByVolumes([$volume])
-	    ->filterByNumbers([$issueNumber])
-	    ->getMany();
+            ->filterByContextIds([$this->getContextId()])
+            ->filterByVolumes([$volume])
+            ->filterByNumbers([$issueNumber])
+            ->getMany();
         $this->_issue = $issues->first();
 
         if (!$this->_issue) {
@@ -117,7 +119,7 @@ trait IssueParser
             $issue->setData('published', true);
             $issue->setData('current', false);
             $issue->setData('datePublished', $publicationDate->format(ArticleImporterPlugin::DATETIME_FORMAT));
-            $issue->setData('accessStatus', \ISSUE_ACCESS_OPEN);
+            $issue->setData('accessStatus', Issue::ISSUE_ACCESS_OPEN);
             $issue->setData('showVolume', true);
             $issue->setData('showNumber', true);
             $issue->setData('showYear', true);
@@ -139,8 +141,8 @@ trait IssueParser
     /**
      * Retrieves the issue publication date
      */
-    public function getIssuePublicationDate(): \DateTimeImmutable
+    public function getIssuePublicationDate(): DateTimeImmutable
     {
-        return new \DateTimeImmutable($this->getIssue()->getData('datePublished'));
+        return new DateTimeImmutable($this->getIssue()->getData('datePublished'));
     }
 }
