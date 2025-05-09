@@ -2,8 +2,8 @@
 /**
  * @file parsers/jats/SubmissionParser.php
  *
- * Copyright (c) 2014-2025 Simon Fraser University
- * Copyright (c) 2000-2025 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class SubmissionParser
@@ -13,13 +13,8 @@
 namespace APP\plugins\importexport\articleImporter\parsers\jats;
 
 use APP\plugins\importexport\articleImporter\ArticleImporterPlugin;
-
 use DateInterval;
-
 use APP\submission\Submission;
-use APP\core\Application;
-use APP\core\Services;
-use PKP\db\DAORegistry;
 use APP\facades\Repo;
 
 trait SubmissionParser
@@ -48,9 +43,9 @@ trait SubmissionParser
 
         $article = Repo::submission()->dao->newDataObject();
         $article->setData('contextId', $this->getContextId());
-        $article->setData('status', \STATUS_PUBLISHED);
+        $article->setData('status', Submission::STATUS_PUBLISHED);
         $article->setData('submissionProgress', '');
-        $article->setData('stageId', \WORKFLOW_STAGE_ID_PRODUCTION);
+        $article->setData('stageId', WORKFLOW_STAGE_ID_PRODUCTION);
         $article->setData('sectionId', $this->getSection()->getId());
         $article->setData('locale', $this->getLocale());
 
@@ -59,7 +54,7 @@ trait SubmissionParser
 
         // Creates the submission
         Repo::submission()->dao->insert($article);
-	$this->_submission = $article;
+        $this->_submission = $article;
 
         $this->_assignEditor();
 

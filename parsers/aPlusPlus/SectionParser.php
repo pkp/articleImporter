@@ -2,8 +2,8 @@
 /**
  * @file parsers/aPlusPlus/SectionParser.php
  *
- * Copyright (c) 2014-2025 Simon Fraser University
- * Copyright (c) 2000-2025 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class SectionParser
@@ -12,8 +12,8 @@
 
 namespace APP\plugins\importexport\articleImporter\parsers\aPlusPlus;
 
+use APP\facades\Repo;
 use APP\section\Section;
-use APP\core\Application;
 
 trait SectionParser
 {
@@ -29,7 +29,7 @@ trait SectionParser
     private function _rollbackSection(): void
     {
         if ($this->_isSectionOwner) {
-            Application::getSectionDAO()->deleteObject($this->_section);
+            Repo::section()->delete($this->_section);
         }
     }
 

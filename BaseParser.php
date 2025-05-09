@@ -2,8 +2,8 @@
 /**
  * @file BaseParser.php
  *
- * Copyright (c) 2014-2025 Simon Fraser University
- * Copyright (c) 2000-2025 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class BaseParser
@@ -22,6 +22,7 @@ use APP\author\Author;
 use APP\file\PublicFileManager;
 use APP\facades\Repo;
 use DOMDocument;
+use DOMDocumentType;
 use DOMElement;
 use DOMNode;
 use DOMNodeList;
@@ -30,6 +31,7 @@ use DOMXPath;
 use Exception;
 use PKP\db\DAORegistry;
 use PKP\facades\Locale;
+use PKP\submission\GenreDAO;
 use XSLTProcessor;
 
 abstract class BaseParser
@@ -98,7 +100,7 @@ abstract class BaseParser
     /**
      * Retrieves the DOCTYPE
      *
-     * @return array DOMDocumentType[]
+     * @return DOMDocumentType[]
      */
     abstract public function getDocType(): array;
 
@@ -279,10 +281,10 @@ abstract class BaseParser
      *
      * @throws Exception Throws when there's an error to parse the XML
      */
-    private function _ensureMetadataIsValidAndParse(): self
+    private function _ensureMetadataIsValidAndParse(): static
     {
         // Tries to parse the XML
-        $this->_document = new DOMDocument();
+        $this->_document = new DOMDocument('1.0', 'utf-8');
         if (!$this->_document->load($this->getArticleEntry()->getMetadataFile()->getPathname())) {
             throw new Exception(__('plugins.importexport.jats.failedToParseXMLDocument'));
         }
@@ -357,7 +359,7 @@ abstract class BaseParser
      *
      * @throws Exception Throws when a submission with the same public ID is found
      */
-    public function _ensureSubmissionDoesNotExist(): self
+    public function _ensureSubmissionDoesNotExist(): static
     {
         foreach ($this->getPublicIds() as $type => $id) {
             if (Repo::submission()->dao->getByPubId($type, $id, $this->getContextId())) {
@@ -377,8 +379,6 @@ abstract class BaseParser
 
     /**
      * Tries to map the given locale to the PKP standard, returns the default locale if it fails or if the parameter is null
-     *
-     * @param string $locale
      */
     public function getLocale(?string $locale = null): string
     {
@@ -491,6 +491,7 @@ abstract class BaseParser
             return $this->_cachedGenres[$contextId][$extension];
         }
 
+        /** @var GenreDAO */
         $genreDao = DAORegistry::getDAO('GenreDAO');
         if (in_array($extension, $this->getConfiguration()->getImageExtensions())) {
             $genre = $genreDao->getByKey('IMAGE', $contextId);

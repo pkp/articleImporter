@@ -39,7 +39,7 @@ class Parser extends BaseParser
         return [
             (new DOMImplementation())->createDocumentType('article', '-//EDP//DTD EDP Publishing JATS v1.0 20130606//EN', 'JATS-edppublishing1.dtd'),
             (new DOMImplementation())->createDocumentType('article', '-//NLM//DTD Journal Archiving with OASIS Tables v3.0 20080202//EN', 'http://dtd.nlm.nih.gov/archiving/3.0/archive-oasis-article3.dtd'),
-            (new \DOMImplementation())->createDocumentType('article', '-//NLM//DTD JATS (Z39.96) Journal Publishing DTD v1.2 20190208//EN', 'http://jats.nlm.nih.gov/publishing/1.2/JATS-journalpublishing1.dtd'),
+            (new DOMImplementation())->createDocumentType('article', '-//NLM//DTD JATS (Z39.96) Journal Publishing DTD v1.2 20190208//EN', 'http://jats.nlm.nih.gov/publishing/1.2/JATS-journalpublishing1.dtd'),
         ];
     }
 

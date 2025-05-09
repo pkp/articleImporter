@@ -2,8 +2,8 @@
 /**
  * @file parsers/aPlusPlus/SubmissionParser.php
  *
- * Copyright (c) 2014-2025 Simon Fraser University
- * Copyright (c) 2000-2025 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class SubmissionParser
@@ -12,8 +12,8 @@
 
 namespace APP\plugins\importexport\articleImporter\parsers\aPlusPlus;
 
+use APP\facades\Repo;
 use APP\plugins\importexport\articleImporter\ArticleImporterPlugin;
-
 use DateInterval;
 use APP\submission\Submission;
 
@@ -41,17 +41,17 @@ trait SubmissionParser
             return $this->_submission;
         }
 
-        $article = Application::getSubmissionDAO()->newDataObject();
+        $article = Repo::submission()->newDataObject();
         $article->setData('contextId', $this->getContextId());
-        $article->setData('status', \STATUS_PUBLISHED);
+        $article->setData('status', Submission::STATUS_PUBLISHED);
         $article->setData('submissionProgress', '');
-        $article->setData('stageId', \WORKFLOW_STAGE_ID_PRODUCTION);
+        $article->setData('stageId', WORKFLOW_STAGE_ID_PRODUCTION);
         $article->setData('sectionId', $this->getSection()->getId());
         $date = $this->getDateFromNode($this->selectFirst('Journal/Volume/Issue/Article/ArticleInfo/ArticleHistory/RegistrationDate')) ?: $this->getPublicationDate()->add(new DateInterval('P1D'));
         $article->setData('dateSubmitted', $date->format(ArticleImporterPlugin::DATETIME_FORMAT));
 
         // Creates the submission
-        $this->_submission = Repo::submission()->add($article, Application::get()->getRequest());
+        $this->_submission = Repo::submission()->dao->insert($article);
 
         $this->_assignEditor();
 
