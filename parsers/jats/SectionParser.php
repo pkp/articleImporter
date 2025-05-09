@@ -48,47 +48,30 @@ trait SectionParser
         $sectionName = null;
         $locale = $this->getLocale();
 
-        // Retrieves the section name and locale
-        $node = $this->selectFirst('front/article-meta/article-categories/subj-group');
-        if ($node) {
-            $sectionName = ucwords(strtolower($this->selectText('subject', $node)));
-            $locale = $this->getLocale($node->getAttribute('xml:lang'));
-        }
-
-        // CUSTOM: Section names have two languages, splitted by "/", where the second is "en"
-        $sectionName = preg_split('@\s*/\s*@', $sectionName ?: $this->getConfiguration()->getDefaultSectionName(), 2);
-
-        $sectionNames = [];
-        $sectionNames[$locale] = reset($sectionName);
-        if (count($sectionName) > 1) {
-            $sectionNames['en'] = end($sectionName);
-        }
-
-        // Tries to find an entry in the cache
-        foreach ($sectionNames as $locale => $title) {
-            if ($this->_section = $cache[$this->getContextId()][$locale][$title] ?? null) {
-                break;
+        if ($this->getConfiguration()->canUseCategoryAsSection()) {
+            // Retrieves the section name and locale
+            $node = $this->selectFirst('front/article-meta/article-categories/subj-group');
+            if ($node) {
+                $sectionName = ucwords(strtolower($this->selectText('subject', $node)));
+                $locale = $this->getLocale($node->getAttribute('xml:lang'));
             }
         }
+
+        $sectionName = $sectionName ?: $this->getIssueMeta()['section'] ?: $this->getConfiguration()->getDefaultSectionName();
+        // Tries to find an entry in the cache
+        $this->_section = $cache[$this->getContextId()][$locale][$sectionName] ?? null;
 
         if (!$this->_section) {
             // Tries to find an entry in the database
-            foreach ($sectionNames as $locale => $title) {
-                if ($this->_section = Repo::section()->getCollector()->filterByTitles([$title])->filterByContextIds([$this->getContextId()])->getMany()->first()) {
-                    break;
-                }
-            }
+            $this->_section = Repo::section()->getCollector()->filterByTitles([$sectionName])->filterByContextIds([$this->getContextId()])->getMany()->first();
         }
 
         if (!$this->_section) {
             // Creates a new section
             $section = Repo::section()->dao->newDataObject();
             $section->setData('contextId', $this->getContextId());
-
-            foreach ($sectionNames as $locale => $title) {
-                $section->setData('title', $title, $locale);
-                $section->setData('abbrev', strtoupper(substr($title, 0, 3)), $locale);
-            }
+            $section->setData('title', $sectionName, $locale);
+            $section->setData('abbrev', strtoupper(substr($sectionName, 0, 3)), $locale);
             $section->setData('abstractsNotRequired', true);
             $section->setData('metaIndexed', true);
             $section->setData('metaReviewed', false);
@@ -105,9 +88,7 @@ trait SectionParser
         $this->includeSection($this->_section);
 
         // Caches the entry
-        foreach ($sectionNames as $locale => $title) {
-            $cache[$this->getContextId()][$locale][$title] = $this->_section;
-        }
+        $cache[$this->getContextId()][$locale][$sectionName] = $this->_section;
 
         return $this->_section;
     }
