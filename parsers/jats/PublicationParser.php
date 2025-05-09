@@ -159,6 +159,7 @@ trait PublicationParser
         $this->_insertXMLSubmissionFile($publication);
 
         $this->_insertHTMLGalley($publication);
+        $this->_insertSupplementaryGalleys($publication);
 
         $publication = Repo::publication()->get($publication->getId());
 
@@ -175,11 +176,20 @@ trait PublicationParser
     {
         $citationText = '';
         foreach ($this->select('/article/back/ref-list/ref') as $citation) {
-            $document = new \DOMDocument();
-            $document->preserveWhiteSpace = false;
-            $document->loadXML($citation->C14N());
-            $document->documentElement->normalize();
-            $citationText .= $document->documentElement->textContent . "\n";
+            $data = $citation->ownerDocument->saveHTML($citation);
+            if (strlen($data)) {
+                $document = new DOMDocument('1.0', 'utf-8');
+                $document->preserveWhiteSpace = false;
+                $document->loadXML($data);
+                $document->documentElement->normalize();
+                $data = $document->documentElement->textContent . "\n";
+            } else {
+                $data = trim($citation->textContent);
+            }
+            if (!$data) {
+                continue;
+            }
+            $citationText .= $data . "\n";
         }
         if ($citationText) {
             $publication->setData('citationsRaw', $citationText);
@@ -190,7 +200,7 @@ trait PublicationParser
     /**
      * Inserts the XML as a production ready file
      */
-    private function _insertXMLSubmissionFile(Publication $publication): void
+    private function _insertXMLSubmissionFile(): void
     {
         $splfile = $this->getArticleEntry()->getMetadataFile();
         $filename = $splfile->getPathname();
@@ -224,12 +234,10 @@ trait PublicationParser
         unset($newFileId);
 
         foreach ($this->select('//asset|//graphic') as $asset) {
-            $assetFilename = $asset->getAttribute($asset->nodeName == 'path' ? 'href' : 'xlink:href');
+            $assetFilename = mb_strtolower($asset->getAttribute($asset->nodeName == 'path' ? 'href' : 'xlink:href'));
             $dependentFilePath = dirname($filename) . DIRECTORY_SEPARATOR . $assetFilename;
             if (file_exists($dependentFilePath)) {
-                $fileType = pathinfo($assetFilename, PATHINFO_EXTENSION);
-                $genreId = $this->_getGenreId($this->getContextId(), $fileType);
-                $this->_createDependentFile($genreId, $submission, $submissionFile, $userId, $fileType, $assetFilename, SubmissionFile::SUBMISSION_FILE_DEPENDENT, \ASSOC_TYPE_SUBMISSION_FILE, false, $submissionFile->getId(), false, $dependentFilePath);
+                $this->_createDependentFile($submission, $userId, $submissionFile->getId(), $dependentFilePath);
             }
         }
     }
@@ -237,33 +245,27 @@ trait PublicationParser
     /**
      * Creates a dependent file
      */
-    protected function _createDependentFile(int $genreId, Submission $submission, SubmissionFile $submissionFile, int $userId, string $fileType, string $filename, $fileStage = false, $assocType = false, $sourceRevision = false, $assocId = false, $sourceFileId = false, string $filePath)
+    protected function _createDependentFile(Submission $submission, int $userId, int $submissionFileId, string $filePath)
     {
+        $filename = basename($filePath);
+        $fileType = pathinfo($filePath, PATHINFO_EXTENSION);
+        $genreId = $this->_getGenreId($this->getContextId(), $fileType);
         /** @var PKPFileService $fileService */
         $fileService = Services::get('file');
 
         $submissionDir = Repo::submissionFile()->getSubmissionDir($submission->getData('contextId'), $submission->getId());
-        $newFileId = $fileService->add(
-            $filePath,
-            $submissionDir . '/' . uniqid() . '.' . $fileType
-        );
+        $newFileId = $fileService->add($filePath, $submissionDir . '/' . uniqid() . '.' . $fileType);
 
         $newSubmissionFile = Repo::submissionFile()->dao->newDataObject();
         $newSubmissionFile->setData('submissionId', $submission->getId());
         $newSubmissionFile->setData('fileId', $newFileId);
-        $newSubmissionFile->setData('fileStage', $fileStage);
+        $newSubmissionFile->setData('fileStage', SubmissionFile::SUBMISSION_FILE_DEPENDENT);
         $newSubmissionFile->setData('genreId', $genreId);
-        $newSubmissionFile->setData('fileStage', $fileStage);
         $newSubmissionFile->setData('createdAt', Core::getCurrentDate());
         $newSubmissionFile->setData('updatedAt', Core::getCurrentDate());
         $newSubmissionFile->setData('uploaderUserId', $userId);
-
-        if (isset($assocType)) {
-            $newSubmissionFile->setData('assocType', $assocType);
-        }
-        if (isset($assocId)) {
-            $newSubmissionFile->setData('assocId', $assocId);
-        }
+        $newSubmissionFile->setData('assocType', ASSOC_TYPE_SUBMISSION_FILE);
+        $newSubmissionFile->setData('assocId', $submissionFileId);
         $newSubmissionFile->setData('name', $filename, $this->getLocale());
         // Expect properties to be stored as empty for artwork metadata
         $newSubmissionFile->setData('caption', '');
@@ -280,6 +282,9 @@ trait PublicationParser
     private function _insertPDFGalley(Publication $publication): void
     {
         $file = $this->getArticleEntry()->getSubmissionFile();
+        if (!$file) {
+            return;
+        }
         $filename = $file->getFilename();
 
         // Create a galley for the article
@@ -287,7 +292,7 @@ trait PublicationParser
         $newGalley->setData('publicationId', $publication->getId());
         $newGalley->setData('name', $filename, $this->getLocale());
         $newGalley->setData('seq', 1);
-        $newGalley->setData('label', 'Fulltext PDF');
+        $newGalley->setData('label', 'PDF');
         $newGalley->setData('locale', $this->getLocale());
         $newGalleyId = Repo::galley()->add($newGalley);
 
@@ -318,8 +323,57 @@ trait PublicationParser
         $galley = Repo::galley()->get($newGalleyId);
         $galley->setData('submissionFileId', $newSubmissionFile->getData('id'));
         Repo::galley()->edit($galley, []);
+    }
 
-        unset($newFileId);
+    /**
+     * Inserts the supplementary galleys
+     */
+    private function _insertSupplementaryGalleys(Publication $publication): void
+    {
+        $htmlFiles = count($this->getArticleEntry()->getHtmlFiles());
+        $files = $this->getArticleEntry()->getSupplementaryFiles();
+        /** @var SplFileInfo */
+        foreach ($files as $i => $file) {
+            // Create a representation of the article (i.e. a galley)
+            /** @var ArticleGalleyDAO */
+            $representationDao = Application::getRepresentationDAO();
+            $newRepresentation = $representationDao->newDataObject();
+            $newRepresentation->setData('publicationId', $publication->getId());
+            $newRepresentation->setData('name', $file->getBasename(), $this->getLocale());
+            $newRepresentation->setData('seq', 2 + $htmlFiles + $i);
+            $newRepresentation->setData('label', 'Supplement' . (count($files) > 1 ? ' ' . ($i + 1) : ''));
+            $newRepresentation->setData('locale', $this->getLocale());
+            $newRepresentationId = $representationDao->insertObject($newRepresentation);
+
+            $submission = $this->getSubmission();
+
+            /** @var SubmissionFileService $submissionFileService */
+            $submissionFileService = Services::get('submissionFile');
+            /** @var PKPFileService $fileService */
+            $fileService = Services::get('file');
+            $submissionDir = $submissionFileService->getSubmissionDir($submission->getData('contextId'), $submission->getId());
+            $newFileId = $fileService->add($file->getPathname(), $submissionDir . '/' . uniqid() . '.' . $file->getExtension());
+
+            /** @var SubmissionFileDAO $submissionFileDao */
+            $submissionFileDao = DAORegistry::getDAO('SubmissionFileDAO');
+            $newSubmissionFile = $submissionFileDao->newDataObject();
+            $newSubmissionFile->setData('submissionId', $submission->getId());
+            $newSubmissionFile->setData('fileId', $newFileId);
+            $newSubmissionFile->setData('genreId', $this->getConfiguration()->getSubmissionGenre()->getId());
+            $newSubmissionFile->setData('fileStage', SUBMISSION_FILE_PROOF);
+            $newSubmissionFile->setData('uploaderUserId', $this->getConfiguration()->getEditor()->getId());
+            $newSubmissionFile->setData('createdAt', Core::getCurrentDate());
+            $newSubmissionFile->setData('updatedAt', Core::getCurrentDate());
+            $newSubmissionFile->setData('assocType', ASSOC_TYPE_REPRESENTATION);
+            $newSubmissionFile->setData('assocId', $newRepresentationId);
+            $newSubmissionFile->setData('name', $file->getBasename(), $this->getLocale());
+
+            $submissionFile = $submissionFileService->add($newSubmissionFile, Application::get()->getRequest());
+
+            $representation = $representationDao->getById($newRepresentationId);
+            $representation->setFileId($submissionFile->getData('id'));
+            $representationDao->updateObject($representation);
+        }
     }
 
     /**
@@ -400,35 +454,62 @@ trait PublicationParser
      */
     private function _insertHTMLGalley(Publication $publication): void
     {
-        $splfile = $this->getArticleEntry()->getHtmlFile();
-		if (!$splfile) {
-			return;
-		}
+        /** @var SplFileInfo */
+        foreach ($this->getArticleEntry()->getHtmlFiles() as $i => $file) {
+            $pieces = explode('.', $file->getBasename(".{$file->getExtension()}"));
+            $lang = end($pieces);
+	        // Create a galley of the article (i.e. a galley)
+	        $newGalley = Repo::galley()->dao->newDataObject();
+	        $newGalley->setData('publicationId', $publication->getId());
+	        $newGalley->setData('name', $file->getBasename(), $this->getLocale($lang));
+	        $newGalley->setData('seq', 2 + $i);
+	        $newGalley->setData('label', 'HTML');
+	        $newGalley->setData('locale', $this->getLocale($lang));
+	        $newGalleyId = Repo::galley()->add($newGalley);
 
-        // Create a galley of the article (i.e. a galley)
-        $newGalley = Repo::galley()->dao->newDataObject();
-        $newGalley->setData('publicationId', $publication->getId());
-        $newGalley->setData('name', $splfile->getBasename(), $this->getLocale());
-        $newGalley->setData('seq', 2);
-        $newGalley->setData('label', 'Fulltext HTML');
-        $newGalley->setData('locale', $this->getLocale());
-        $newGalleyId = Repo::galley()->add($newGalley);
+            $userId = $this->getConfiguration()->getUser()->getId();
 
-        $userId = $this->getConfiguration()->getUser()->getId();
+            $submission = $this->getSubmission();
 
-        $submission = $this->getSubmission();
+            /** @var PKPFileService $fileService */
+            $fileService = Services::get('file');
 
-        /** @var PKPFileService $fileService */
-        $fileService = Services::get('file');
+            $content = str_replace('src="graphic/', 'src="', file_get_contents($file->getPathname()));
+            if (preg_match_all('/src="([^"]*)"/', $content, $matches)) {
+                foreach ($matches[1] as $path) {
+                    $path = urldecode($path);
+                    if ($path[0] === '/') {
+                        continue;
+                    }
+                    $realPath = $file->getPath() . "/graphic/{$path}";
+                    $extension = pathinfo($realPath, PATHINFO_EXTENSION);
+                    if (strtolower(substr($extension, 0, 3)) === 'tif') {
+                        $newFilename = basename($path, ".{$extension}") . '.jpg';
+                        $content = str_replace($path, $newFilename, $content);
+                        if (!file_exists($realPath = $file->getPath() . '/graphic/' .  $newFilename)) {
+                            throw new Exception("Convert {$realPath} from {$extension} to jpg");
+                        }
+                    } else if (!file_exists($realPath)) {
+                        throw new Exception("Missing file {$realPath}");
+                    }
+                }
+            }
+            $content = preg_replace_callback('/href="([^"]*)"/', function ($href) use ($content) {
+                if (filter_var($href[1], FILTER_VALIDATE_EMAIL, FILTER_FLAG_EMAIL_UNICODE)) {
+                    $href[0] = str_replace($href[1], "mailto:{$href[1]}", $href[0]);
+                }
+                if ($href[1][0] === '#' && is_bool(strpos($content, 'id="' . substr($href[1], 1) . '"'))) {
+                    echo "ID not found: {$href[1]}\n";
+                }
+                return $href[0];
+            }, $content);
 
-        $filename = tempnam(sys_get_temp_dir(), 'tmp');
-        file_put_contents($filename, str_replace('src="images/', 'src="', file_get_contents($splfile->getPathname())));
+            $filename = tempnam(sys_get_temp_dir(), 'tmp');
+            file_put_contents($filename, $content);
 
-        $submissionDir = Repo::submissionFile()->getSubmissionDir($submission->getData('contextId'), $submission->getId());
-        $newFileId = $fileService->add(
-            $filename,
-            $submissionDir . '/' . uniqid() . '.html'
-        );
+            $submissionDir = Repo::submissionFile()->getSubmissionDir($submission->getData('contextId'), $submission->getId());
+            $newFileId = $fileService->add($filename, $submissionDir . '/' . uniqid() . '.html');
+            unlink($filename);
 
         $newSubmissionFile = Repo::submissionFile()->dao->newDataObject();
         $newSubmissionFile->setData('submissionId', $submission->getId());
@@ -438,25 +519,24 @@ trait PublicationParser
         $newSubmissionFile->setData('uploaderUserId', $this->getConfiguration()->getEditor()->getId());
         $newSubmissionFile->setData('createdAt', Core::getCurrentDate());
         $newSubmissionFile->setData('updatedAt', Core::getCurrentDate());
-        $newSubmissionFile->setData('assocType', \ASSOC_TYPE_REPRESENTATION);
+        $newSubmissionFile->setData('assocType', ASSOC_TYPE_REPRESENTATION);
         $newSubmissionFile->setData('assocId', $newGalleyId);
-        $newSubmissionFile->setData('name', $splfile->getBasename(), $this->getLocale());
+        $newSubmissionFile->setData('name', $file->getBasename(), $this->getLocale($lang));
 
-        $submissionFile = Repo::submissionFile()->add($newSubmissionFile, Application::get()->getRequest());
+            $submissionFile = Repo::submissionFile()->add($newSubmissionFile, Application::get()->getRequest());
 
-        /** @var \SplFileInfo */
-        foreach (is_dir($splfile->getPath()) ? new FilesystemIterator($splfile->getPath() . '/images') : [] as $assetFilename) {
-            if ($assetFilename->isDir()) {
-                throw new \Exception("Unexpected directory {$assetFilename}");
+            /** @var SplFileInfo */
+            foreach (is_dir($file->getPath() . '/graphic') ? new FilesystemIterator($file->getPath() . '/graphic') : [] as $assetFilename) {
+                if ($assetFilename->isDir()) {
+                    throw new Exception("Unexpected directory {$assetFilename}");
+                }
+                $this->_createDependentFile($submission, $userId, $submissionFile->getId(), $assetFilename);
             }
-            $fileType = $assetFilename->getExtension();
-            $genreId = $this->_getGenreId($this->getContextId(), $fileType);
-            $this->_createDependentFile($genreId, $submission, $submissionFile, $userId, $fileType, $assetFilename->getBasename(), SubmissionFile::SUBMISSION_FILE_DEPENDENT, \ASSOC_TYPE_SUBMISSION_FILE, false, $submissionFile->getId(), false, $assetFilename);
-        }
 
-        $galley = Repo::galley()->get($newGalleyId);
-        $galley->setData('submissionFileId', $submissionFile->getData('id'));
-        Repo::galley()->edit($galley);
+            $galley = Repo::galley()->get($newGalleyId);
+            $galley->setData('submissionFileId', $submissionFile->getData('id'));
+            Repo::galley()->edit($galley);
+        }
     }
 
     /**
