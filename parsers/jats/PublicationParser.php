@@ -142,6 +142,7 @@ trait PublicationParser
 
         $publication = $this->_processCitations($publication);
         $this->_setCoverImage($publication);
+        $this->_processCategories($publication);
 
         // Inserts the publication and updates the submission
 	Repo::publication()->dao->insert($publication);
@@ -474,5 +475,65 @@ trait PublicationParser
         if (count($keywords)) {
             Repo::controlledVocab()->insertBySymbolic(ControlledVocab::CONTROLLED_VOCAB_SUBMISSION_KEYWORD, $keywords, Application::ASSOC_TYPE_PUBLICATION, $publication->getId());
         }
+    }
+
+    /**
+     * Process the categories
+     */
+    private function _processCategories(Publication $publication): void
+    {
+        static $cache = [];
+        $categoryIds = [];
+        foreach ($this->select('front/article-meta/article-categories/subj-group') as $node) {
+            $locale = $this->getLocale();
+            $name = $this->selectText('subject', $node);
+            $locale = $this->getLocale($node->getAttribute('xml:lang'));
+
+            // CUSTOM: Category names might have two languages, splitted by "/", where the second is "en_US"
+            $name = preg_split('@\s*/\s*@', $name, 2);
+            $names = [$locale => reset($name)];
+            if (count($name) > 1) {
+                $names['en_US'] = end($name);
+            }
+
+            // Tries to find an entry in the cache
+            foreach ($names as $locale => $name) {
+                if ($category = $cache[$this->getContextId()][$locale][$name] ?? null) {
+                    break;
+                }
+            }
+
+            if (!$category) {
+                // Tries to find an entry in the database
+                /** @var CategoryDAO */
+                $categoryDao = DAORegistry::getDAO('CategoryDAO');
+                foreach ($names as $locale => $name) {
+                    if ($category = $categoryDao->getByTitle($name, $this->getContextId(), $locale)) {
+                        break;
+                    }
+                }
+            }
+
+            if (!$category) {
+                // Creates a new category
+                $category = $categoryDao->newDataObject();
+                $category->setData('contextId', $this->getContextId());
+                foreach ($names as $locale => $name) {
+                    $category->setData('title', $name, $locale);
+                }
+                $category->setData('parentId', null);
+                $category->setData('path', Stringy::create(reset($names))->toLowerCase()->dasherize()->regexReplace('[^a-z0-9\-\_.]', '') . '-' . substr($locale, 0, 2));
+                $category->setData('sortOption', 'datePublished-2');
+
+                $categoryDao->insertObject($category);
+            }
+
+            // Caches the entry
+            foreach ($names as $locale => $name) {
+                $cache[$this->getContextId()][$locale][$name] = $category;
+            }
+            $categoryIds[] = $category->getId();
+        }
+        $publication->setData('categoryIds', $categoryIds);
     }
 }
