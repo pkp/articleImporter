@@ -50,8 +50,9 @@ trait AuthorParser
         } elseif (!$lastName && !$firstName) {
             $firstName = $this->getConfiguration()->getContext()->getName($this->getLocale());
         }
-        $email = null;
+        $email = $this->selectText('email', $authorNode);
         $affiliations = [];
+        $biography = null;
 
         // Try to retrieve the affiliation and email
         foreach ($this->select('xref', $authorNode) as $node) {
@@ -64,22 +65,39 @@ trait AuthorParser
                     }
                     break;
                 case 'corresp':
-                    $email = $this->selectText("front/article-meta/author-notes/corresp[@id='${id}']//email");
+                    $email = $email ?: $this->selectText("front/article-meta/author-notes/corresp[@id='{$id}']//email");
                     break;
+                case 'fn':
+                    /** @var DOMElement $node */
+                    if ($node = $this->selectFirst("back/fn-group/fn[@id='{$id}']")) {
+                        $node = $node->cloneNode(true);
+                        /** @var DOMElement */
+                        foreach ($node->getElementsByTagName('email') as $emailNode) {
+                            $email = $email ?: $emailNode->textContent;
+                        }
+                        $this->fixJatsTags($node);
+                        $fragment = $node->ownerDocument->createDocumentFragment();
+                        foreach (iterator_to_array($node->childNodes) as $childNode) {
+                            $fragment->appendChild($childNode);
+                        }
+                        $biography = $node->ownerDocument->saveHTML($fragment);
+                    }
             }
         }
 
-        $email = $email ?: $this->selectText('email', $authorNode) ?: $this->getConfiguration()->getEmail();
+        $email = $email ?: $this->getConfiguration()->getEmail();
 
-        $authorDao = \DAORegistry::getDAO('AuthorDAO');
+        /** @var AuthorDAO */
+        $authorDao = DAORegistry::getDAO('AuthorDAO');
+        /** @var Author */
         $author = $authorDao->newDataObject();
         $author->setData('givenName', $firstName, $this->getLocale());
         if ($lastName) {
             $author->setData('familyName', $lastName, $this->getLocale());
         }
-        //$author->setData('preferredPublicName', "", $this->getLocale());
         $author->setData('email', $email);
         $author->setData('affiliation', implode('; ', $affiliations), $this->getLocale());
+        $author->setData('biography', $biography, $this->getLocale());
         $author->setData('seq', $this->_authorCount + 1);
         $author->setData('publicationId', $publication->getId());
         $author->setData('includeInBrowse', true);
