@@ -45,37 +45,23 @@ trait SectionParser
         $sectionName = null;
         $locale = $this->getLocale();
 
-        // Retrieves the section name and locale
-        $node = $this->selectFirst('Journal/Volume/Issue/Article/ArticleInfo/ArticleCategory');
-        if ($node) {
-            $sectionName = ucwords(strtolower($this->selectText('.', $node)));
-            $locale = $this->getLocale($node->getAttribute('Language'));
-        }
-
-        // CUSTOM: Section names have two languages, splitted by "/", where the second is "en_US"
-        $sectionName = preg_split('@\s*/\s*@', $sectionName ?: $this->getConfiguration()->getDefaultSectionName(), 2);
-
-        $sectionNames = [];
-        $sectionNames[$locale] = reset($sectionName);
-        if (count($sectionName) > 1) {
-            $sectionNames['en_US'] = end($sectionName);
-        }
-
-        // Tries to find an entry in the cache
-        foreach ($sectionNames as $locale => $title) {
-            if ($this->_section = $cache[$this->getContextId()][$locale][$title] ?? null) {
-                break;
+        if ($this->getConfiguration()->canUseCategoryAsSection()) {
+            // Retrieves the section name and locale
+            $node = $this->selectFirst('Journal/Volume/Issue/Article/ArticleInfo/ArticleCategory');
+            if ($node) {
+                $sectionName = ucwords(strtolower($this->selectText('.', $node)));
+                $locale = $this->getLocale($node->getAttribute('Language'));
             }
         }
+
+        $sectionName = $sectionName ?: $this->getIssueMeta()['section'] ?: $this->getConfiguration()->getDefaultSectionName();
+        // Tries to find an entry in the cache
+        $this->_section = $cache[$this->getContextId()][$locale][$sectionName] ?? null;
 
         if (!$this->_section) {
             // Tries to find an entry in the database
-            $sectionDao = \Application::getSectionDAO();
-            foreach ($sectionNames as $locale => $title) {
-                if ($this->_section = $sectionDao->getByTitle($title, $this->getContextId(), $locale)) {
-                    break;
-                }
-            }
+            $sectionDao = Application::getSectionDAO();
+            $this->_section = $sectionDao->getByTitle($sectionName, $this->getContextId(), $locale);
         }
 
         if (!$this->_section) {
@@ -83,11 +69,8 @@ trait SectionParser
             \AppLocale::requireComponents(\LOCALE_COMPONENT_APP_DEFAULT);
             $section = $sectionDao->newDataObject();
             $section->setData('contextId', $this->getContextId());
-
-            foreach ($sectionNames as $locale => $title) {
-                $section->setData('title', $title, $locale);
-                $section->setData('abbrev', strtoupper(substr($title, 0, 3)), $locale);
-            }
+            $section->setData('title', $sectionName, $locale);
+            $section->setData('abbrev', strtoupper(substr($sectionName, 0, 3)), $locale);
             $section->setData('abstractsNotRequired', true);
             $section->setData('metaIndexed', true);
             $section->setData('metaReviewed', false);
@@ -97,7 +80,6 @@ trait SectionParser
             $section->setData('hideAuthor', false);
 
             $sectionDao->insertObject($section);
-
             $this->_section = $section;
         }
 
@@ -105,9 +87,7 @@ trait SectionParser
         $this->includeSection($this->_section);
 
         // Caches the entry
-        foreach ($sectionNames as $locale => $title) {
-            $cache[$this->getContextId()][$locale][$title] = $this->_section;
-        }
+        $cache[$this->getContextId()][$locale][$sectionName] = $this->_section;
 
         return $this->_section;
     }
