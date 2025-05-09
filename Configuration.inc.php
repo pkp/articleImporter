@@ -1,9 +1,9 @@
 <?php
 /**
- * @file plugins/importexport/articleImporter/Configuration.inc.php
+ * @file Configuration.inc.php
  *
- * Copyright (c) 2014-2022 Simon Fraser University
- * Copyright (c) 2000-2022 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class Configuration
@@ -14,17 +14,28 @@
 
 namespace PKP\Plugins\ImportExport\ArticleImporter;
 
+use Application;
+use Context;
+use DAORegistry;
+use Exception;
+use Genre;
+use GenreDAO;
+use InvalidArgumentException;
+use User;
+use UserDAO;
+use UserGroupDAO;
+
 class Configuration
 {
     /** @var string Default title for sections */
     private $_defaultSectionName;
     /** @var string[] List of classes that can parse XML articles */
     private $_parsers;
-    /** @var \Context Context */
+    /** @var Context Context */
     private $_context;
-    /** @var \User User instance */
+    /** @var User User instance */
     private $_user;
-    /** @var \User Editor instance */
+    /** @var User Editor instance */
     private $_editor;
     /** @var string Default email */
     private $_email;
@@ -34,7 +45,7 @@ class Configuration
     private $_editorGroupId;
     /** @var int|null Author's user group ID */
     private $_authorGroupId;
-    /** @var \Genre Submission genre instance */
+    /** @var Genre Submission genre instance */
     private $_genre;
     /** @var string[] File extensions recognized as images */
     private $_imageExt;
@@ -58,47 +69,51 @@ class Configuration
         $this->_defaultSectionName = $defaultSectionName;
         $this->_parsers = $parsers;
 
-        if (!$this->_context = \Application::getContextDAO()->getByPath($contextPath)) {
-            throw new \InvalidArgumentException(__('plugins.importexport.articleImporter.unknownJournal', ['journal' => $contextPath]));
+        if (!$this->_context = Application::getContextDAO()->getByPath($contextPath)) {
+            throw new InvalidArgumentException(__('plugins.importexport.articleImporter.unknownJournal', ['journal' => $contextPath]));
         }
 
         [$this->_user, $this->_editor] = array_map(function ($username) {
-            if (!$entity = \DAORegistry::getDAO('UserDAO')->getByUsername($username)) {
-                throw new \InvalidArgumentException(__('plugins.importexport.articleImporter.unknownUser', ['username' => $username]));
+            /** @var UserDAO */
+            $userDao = DAORegistry::getDAO('UserDAO');
+            if (!$entity = $userDao->getByUsername($username)) {
+                throw new InvalidArgumentException(__('plugins.importexport.articleImporter.unknownUser', ['username' => $username]));
             }
             return $entity;
         }, [$username, $editorUsername]);
 
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            throw new \InvalidArgumentException(__('plugins.importexport.articleImporter.unknownEmail', ['email' => $email]));
+            throw new InvalidArgumentException(__('plugins.importexport.articleImporter.unknownEmail', ['email' => $email]));
         }
         $this->_email = $email;
 
         if (!is_dir($importPath)) {
-            throw new \InvalidArgumentException(__('plugins.importexport.articleImporter.directoryDoesNotExist', ['directory' => $importPath]));
+            throw new InvalidArgumentException(__('plugins.importexport.articleImporter.directoryDoesNotExist', ['directory' => $importPath]));
         }
         $this->_importPath = $importPath;
 
         // Finds the user group ID for the editor
-        $userGroupDao = \DAORegistry::getDAO('UserGroupDAO');
-        $userGroupIds = $userGroupDao->getUserGroupIdsByRoleId(\ROLE_ID_MANAGER, $this->_context->getId());
+        /** @var UserGroupDAO */
+        $userGroupDao = DAORegistry::getDAO('UserGroupDAO');
+        $userGroupIds = $userGroupDao->getUserGroupIdsByRoleId(ROLE_ID_MANAGER, $this->_context->getId());
         foreach ($userGroupIds as $id) {
-            if ($userGroupDao->userGroupAssignedToStage($id, \WORKFLOW_STAGE_ID_PRODUCTION)) {
+            if ($userGroupDao->userGroupAssignedToStage($id, WORKFLOW_STAGE_ID_PRODUCTION)) {
                 $this->_editorGroupId = $id;
                 break;
             }
         }
         if (!$this->_editorGroupId) {
-            throw new \Exception(__('plugins.importexport.articleImporter.missingEditorGroupId'));
+            throw new Exception(__('plugins.importexport.articleImporter.missingEditorGroupId'));
         }
 
         // Finds the user group ID for the authors
-        $userGroupDao = \DAORegistry::getDAO('UserGroupDAO');
-        $userGroupIds = $userGroupDao->getUserGroupIdsByRoleId(\ROLE_ID_AUTHOR, $this->_context->getId());
+        $userGroupIds = $userGroupDao->getUserGroupIdsByRoleId(ROLE_ID_AUTHOR, $this->_context->getId());
         $this->_authorGroupId = reset($userGroupIds);
 
         // Retrieves the genre for submissions
-        $this->_genre = \DAORegistry::getDAO('GenreDAO')->getByKey('SUBMISSION', $this->_context->getId());
+        /** @var GenreDAO */
+        $genreDao = DAORegistry::getDAO('GenreDAO');
+        $this->_genre = $genreDao->getByKey('SUBMISSION', $this->_context->getId());
 
         $this->_imageExt = ['tif', 'tiff', 'png', 'jpg', 'jpeg'];
         $this->_issueCoverFilename = 'cover';
@@ -107,7 +122,7 @@ class Configuration
     /**
      * Retrieves the context instance
      */
-    public function getContext(): \Context
+    public function getContext(): Context
     {
         return $this->_context;
     }
@@ -115,7 +130,7 @@ class Configuration
     /**
      * Retrieves the user instance
     */
-    public function getUser(): \User
+    public function getUser(): User
     {
         return $this->_user;
     }
@@ -123,7 +138,7 @@ class Configuration
     /**
      * Retrieves the user instance
      */
-    public function getEditor(): \User
+    public function getEditor(): User
     {
         return $this->_editor;
     }
@@ -131,7 +146,7 @@ class Configuration
     /**
      * Retrieves the default email which will be assigned to authors (when absent)
      *
-     * @return \Context
+     * @return Context
      */
     public function getEmail(): string
     {
@@ -167,7 +182,7 @@ class Configuration
     /**
      * Retrieves the submission genre
      */
-    public function getSubmissionGenre(): \Genre
+    public function getSubmissionGenre(): Genre
     {
         return $this->_genre;
     }

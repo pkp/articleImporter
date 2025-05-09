@@ -1,9 +1,9 @@
 <?php
 /**
- * @file plugins/importexport/articleImporter/ArticleIterator.inc.php
+ * @file ArticleIterator.inc.php
  *
- * Copyright (c) 2014-2022 Simon Fraser University
- * Copyright (c) 2000-2022 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class ArticleIterator
@@ -14,7 +14,12 @@
 
 namespace PKP\Plugins\ImportExport\ArticleImporter;
 
-class ArticleIterator extends \ArrayIterator
+use ArrayIterator;
+use Exception;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+
+class ArticleIterator extends ArrayIterator
 {
     /**
      * Constructor
@@ -33,8 +38,8 @@ class ArticleIterator extends \ArrayIterator
      */
     private function _getEntries(string $path): array
     {
-        $directoryIterator = new \RecursiveDirectoryIterator($path);
-        $recursiveIterator = new \RecursiveIteratorIterator($directoryIterator, \RecursiveIteratorIterator::SELF_FIRST);
+        $directoryIterator = new RecursiveDirectoryIterator($path);
+        $recursiveIterator = new RecursiveIteratorIterator($directoryIterator, RecursiveIteratorIterator::SELF_FIRST);
         // Ignores deeper folders
         $recursiveIterator->setMaxDepth(3);
         $articleEntries = [];
@@ -45,18 +50,18 @@ class ArticleIterator extends \ArrayIterator
                 [$article, $issue, $volume] = array_map(function ($item) use ($file) {
                     // Fails if the folder doesn't have a number
                     if (!preg_match('/\d+/', $item->getFilename(), $order)) {
-                        throw new \Exception(__('plugins.importexport.articleImporter.invalidStructure', ['path' => $file->getPath()]));
+                        throw new Exception(__('plugins.importexport.articleImporter.invalidStructure', ['path' => $file->getPath()]));
                     }
                     return array_shift($order);
                 }, [$article = $file->getPathinfo(), $issue = $article->getPathinfo(), $volume = $issue->getPathinfo()]);
 
-                $key = "${volume}-${issue}-${article}";
+                $key = "{$volume}-{$issue}-{$article}";
                 ($articleEntries[$key] ?? $articleEntries[$key] = new ArticleEntry($volume, $issue, $article))
                     ->addFile($file);
             }
         }
         // Sorts the entries by key (at this point made up of "volume-issue-article")
-        ksort($articleEntries, \SORT_NATURAL);
+        ksort($articleEntries, SORT_NATURAL);
 
         return $articleEntries;
     }

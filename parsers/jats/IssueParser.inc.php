@@ -1,9 +1,9 @@
 <?php
 /**
- * @file plugins/importexport/articleImporter/parsers/jats/IssueParser.inc.php
+ * @file parsers/jats/IssueParser.inc.php
  *
- * Copyright (c) 2014-2022 Simon Fraser University
- * Copyright (c) 2000-2022 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class IssueParser
@@ -14,13 +14,20 @@
 
 namespace PKP\Plugins\ImportExport\ArticleImporter\Parsers\Jats;
 
+use DAORegistry;
+use DateTimeImmutable;
+use DOMDocument;
+use DOMXPath;
+use Issue;
+use IssueDAO;
 use PKP\Plugins\ImportExport\ArticleImporter\ArticleImporterPlugin;
+use Services;
 
 trait IssueParser
 {
     /** @var bool True if the issue was created by this instance */
     private $_isIssueOwner;
-    /** @var \Issue Issue instance */
+    /** @var Issue Issue instance */
     private $_issue;
     /** @var array{date:?DateTimeImmutable, title: ?string, section: ?string} Issue metadata */
     private $_issueMeta;
@@ -31,7 +38,9 @@ trait IssueParser
     private function _rollbackIssue(): void
     {
         if ($this->_isIssueOwner) {
-            \DAORegistry::getDAO('IssueDAO')->deleteObject($this->_issue);
+            /** @var IssueDAO */
+            $issueDao = DAORegistry::getDAO('IssueDAO');
+            $issueDao->deleteObject($this->_issue);
         }
     }
 
@@ -74,7 +83,7 @@ trait IssueParser
     /**
      * Parses and retrieves the issue, if an issue with the same name exists, it will be retrieved
      */
-    public function getIssue(): \Issue
+    public function getIssue(): Issue
     {
         static $cache = [];
 
@@ -90,7 +99,7 @@ trait IssueParser
         }
 
         // If this issue exists, return it
-        $issues = \Services::get('issue')->getMany([
+        $issues = Services::get('issue')->getMany([
             'contextId' => $this->getContextId(),
             'volumes' => $volume,
             'numbers' => $issueNumber
@@ -101,7 +110,8 @@ trait IssueParser
             $locale = $this->getLocale();
 
             // Create a new issue
-            $issueDao = \DAORegistry::getDAO('IssueDAO');
+            /** @var IssueDAO */
+            $issueDao = DAORegistry::getDAO('IssueDAO');
             $issue = $issueDao->newDataObject();
 
             $node = $this->selectFirst("front/article-meta/pub-date[@pub-type='collection']");
@@ -115,7 +125,7 @@ trait IssueParser
             $issue->setData('published', true);
             $issue->setData('current', false);
             $issue->setData('datePublished', $publicationDate->format(ArticleImporterPlugin::DATETIME_FORMAT));
-            $issue->setData('accessStatus', \ISSUE_ACCESS_OPEN);
+            $issue->setData('accessStatus', ISSUE_ACCESS_OPEN);
             $issue->setData('showVolume', true);
             $issue->setData('showNumber', true);
             $issue->setData('showYear', true);
@@ -137,8 +147,8 @@ trait IssueParser
     /**
      * Retrieves the issue publication date
      */
-    public function getIssuePublicationDate(): \DateTimeImmutable
+    public function getIssuePublicationDate(): DateTimeImmutable
     {
-        return new \DateTimeImmutable($this->getIssue()->getData('datePublished'));
+        return new DateTimeImmutable($this->getIssue()->getData('datePublished'));
     }
 }

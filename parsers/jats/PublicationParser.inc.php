@@ -1,9 +1,9 @@
 <?php
 /**
- * @file plugins/importexport/articleImporter/parsers/jats/PublicationParser.inc.php
+ * @file parsers/jats/PublicationParser.inc.php
  *
- * Copyright (c) 2014-2022 Simon Fraser University
- * Copyright (c) 2000-2022 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class PublicationParser
@@ -14,29 +14,54 @@
 
 namespace PKP\Plugins\ImportExport\ArticleImporter\Parsers\Jats;
 
+use Application;
 use APP\Services\SubmissionFileService;
+use ArticleGalleyDAO;
+use CategoryDAO;
+use Core;
+use DAORegistry;
+use DateTime;
+use DateTimeImmutable;
+use DOMDocument;
+use Exception;
 use FilesystemIterator;
 use PKP\Plugins\ImportExport\ArticleImporter\ArticleImporterPlugin;
+use PKPLocale;
 use PKP\Services\PKPFileService;
+use PKPString;
+use PluginRegistry;
 use Publication;
+use PublicationDAO;
+use Services;
+use SplFileInfo;
+use Stringy\Stringy;
+use Submission;
+use SubmissionFile;
+use SubmissionFileDAO;
+use SubmissionKeywordDAO;
 use TemporaryFile;
+use TemporaryFileDAO;
+use TemporaryFileManager;
 
 trait PublicationParser
 {
     /**
      * Parse, import and retrieve the publication
      */
-    public function getPublication(): \Publication
+    public function getPublication(): Publication
     {
         $publicationDate = $this->getPublicationDate() ?: $this->getIssuePublicationDate();
 
         // Create the publication
-        $publication = \DAORegistry::getDAO('PublicationDAO')->newDataObject();
+        /** @var PublicationDAO */
+        $publicationDao = DAORegistry::getDAO('PublicationDAO');
+        /** @var Publication */
+        $publication = $publicationDao->newDataObject();
         $publication->setData('submissionId', $this->getSubmission()->getId());
-        $publication->setData('status', \STATUS_PUBLISHED);
+        $publication->setData('status', STATUS_PUBLISHED);
         $publication->setData('version', 1);
         $publication->setData('seq', $this->getSubmission()->getId());
-        $publication->setData('accessStatus', \ARTICLE_ACCESS_OPEN);
+        $publication->setData('accessStatus', ARTICLE_ACCESS_OPEN);
         $publication->setData('datePublished', $publicationDate->format(ArticleImporterPlugin::DATETIME_FORMAT));
         $publication->setData('sectionId', $this->getSection()->getId());
         $publication->setData('issueId', $this->getIssue()->getId());
@@ -46,7 +71,7 @@ trait PublicationParser
         $firstPage = $this->selectText('front/article-meta/fpage');
         $lastPage = $this->selectText('front/article-meta/lpage');
         if ($firstPage || $lastPage) {
-            $publication->setData('pages', "${firstPage}" . ($lastPage ? "-${lastPage}" : ''));
+            $publication->setData('pages', "{$firstPage}" . ($lastPage ? "-{$lastPage}" : ''));
         }
 
         $hasTitle = false;
@@ -54,33 +79,33 @@ trait PublicationParser
         // Set title
         if ($node = $this->selectFirst('front/article-meta/title-group/article-title')) {
             $locale = $this->getLocale($node->getAttribute('xml:lang'));
-            $value = $this->selectText('.', $node);
+            $value = $this->selectText('.', $this->clearXref($node));
             $hasTitle = strlen($value);
             $publication->setData('title', $value, $locale);
         }
 
         // Set subtitle
         if ($node = $this->selectFirst('front/article-meta/title-group/subtitle')) {
-            $publication->setData('subtitle', $this->selectText('.', $node), $this->getLocale($node->getAttribute('xml:lang')));
+            $publication->setData('subtitle', $this->selectText('.', $this->clearXref($node)), $this->getLocale($node->getAttribute('xml:lang')));
         }
 
         // Set localized title/subtitle
         foreach ($this->select('front/article-meta/title-group/trans-title-group') as $node) {
             $locale = $this->getLocale($node->getAttribute('xml:lang'));
-            if ($value = $this->selectText('trans-title', $node)) {
+            if ($value = $this->selectText('trans-title', $this->clearXref($node))) {
                 $hasTitle = true;
                 $publication->setData('title', $value, $locale);
             }
-            if ($value = $this->selectText('trans-subtitle', $node)) {
+            if ($value = $this->selectText('trans-subtitle', $this->clearXref($node))) {
                 $publication->setData('subtitle', $value, $locale);
             }
         }
 
         if (!$hasTitle) {
-            throw new \Exception(__('plugins.importexport.articleImporter.articleTitleMissing'));
+            throw new Exception(__('plugins.importexport.articleImporter.articleTitleMissing'));
         }
 
-        $publication->setData('language', \PKPLocale::getIso1FromLocale($this->getSubmission()->getData('locale')));
+        $publication->setData('language', PKPLocale::getIso1FromLocale($this->getSubmission()->getData('locale')));
 
         // Set abstract
         foreach ($this->select('front/article-meta/abstract|front/article-meta/trans-abstract') as $node) {
@@ -93,7 +118,7 @@ trait PublicationParser
                     'sup' => 'sup',
                     'p' => 'p'
                 ][$node->nodeName] ?? null;
-                return $tag ? "<${tag}>${content}</${tag}>" : $content;
+                return $tag ? "<{$tag}>{$content}</{$tag}>" : $content;
             }));
             if ($value) {
                 $publication->setData('abstract', $value, $this->getLocale($node->getAttribute('xml:lang')));
@@ -104,7 +129,7 @@ trait PublicationParser
         $pubIdPlugins = false;
         foreach ($this->getPublicIds() as $type => $value) {
             if ($type !== 'publisher-id' && !$pubIdPlugins) {
-                $pubIdPlugins = \PluginRegistry::loadCategory('pubIds', true, $this->getContextId());
+                $pubIdPlugins = PluginRegistry::loadCategory('pubIds', true, $this->getContextId());
             }
             $publication->setData('pub-id::' . $type, $value);
         }
@@ -120,7 +145,7 @@ trait PublicationParser
         $this->_processCategories($publication);
 
         // Inserts the publication and updates the submission
-        $publication = \Services::get('publication')->add($publication, \Application::get()->getRequest());
+        $publication = Services::get('publication')->add($publication, Application::get()->getRequest());
 
         $this->_processKeywords($publication);
         $this->_processAuthors($publication);
@@ -130,14 +155,13 @@ trait PublicationParser
 
         // Record this XML itself
         $this->_insertXMLSubmissionFile($publication);
-
         $this->_insertHTMLGalley($publication);
         $this->_insertSupplementaryGalleys($publication);
 
-        $publication = \Services::get('publication')->get($publication->getId());
+        $publication = Services::get('publication')->get($publication->getId());
 
         // Publishes the article
-        \Services::get('publication')->publish($publication);
+        Services::get('publication')->publish($publication);
 
         return $publication;
     }
@@ -145,7 +169,7 @@ trait PublicationParser
     /**
      * Inserts citations
      */
-    private function _processCitations(\Publication $publication): \Publication
+    private function _processCitations(Publication $publication): Publication
     {
         $citationText = '';
         foreach ($this->select('/article/back/ref-list/ref') as $citation) {
@@ -175,11 +199,11 @@ trait PublicationParser
      */
     private function _insertXMLSubmissionFile(): void
     {
-        $splfile = $this->getArticleEntry()->getMetadataFile();
-        $filename = $splfile->getPathname();
+        $file = $this->getArticleEntry()->getMetadataFile();
+        $filename = $file->getPathname();
 
-        $genreId = \GENRE_CATEGORY_DOCUMENT;
-        $fileStage = \SUBMISSION_FILE_PRODUCTION_READY;
+        $genreId = GENRE_CATEGORY_DOCUMENT;
+        $fileStage = SUBMISSION_FILE_PRODUCTION_READY;
         $userId = $this->getConfiguration()->getUser()->getId();
 
         $submission = $this->getSubmission();
@@ -203,11 +227,11 @@ trait PublicationParser
         $newSubmissionFile->setData('genreId', $genreId);
         $newSubmissionFile->setData('fileStage', $fileStage);
         $newSubmissionFile->setData('uploaderUserId', $this->getConfiguration()->getEditor()->getId());
-        $newSubmissionFile->setData('createdAt', \Core::getCurrentDate());
-        $newSubmissionFile->setData('updatedAt', \Core::getCurrentDate());
-        $newSubmissionFile->setData('name', $splfile->getFilename(), $this->getLocale());
+        $newSubmissionFile->setData('createdAt', Core::getCurrentDate());
+        $newSubmissionFile->setData('updatedAt', Core::getCurrentDate());
+        $newSubmissionFile->setData('name', $file->getFilename(), $this->getLocale());
 
-        $submissionFile = $submissionFileService->add($newSubmissionFile, \Application::get()->getRequest());
+        $submissionFile = $submissionFileService->add($newSubmissionFile, Application::get()->getRequest());
         unset($newFileId);
 
         foreach ($this->select('//asset|//graphic') as $asset) {
@@ -235,8 +259,8 @@ trait PublicationParser
         $submissionDir = $submissionFileService->getSubmissionDir($submission->getData('contextId'), $submission->getId());
         $newFileId = $fileService->add($filePath, $submissionDir . '/' . uniqid() . '.' . $fileType);
 
-        /* @var $submissionFileDao \SubmissionFileDAO */
-        $submissionFileDao = \DAORegistry::getDAO('SubmissionFileDAO');
+        /** @var SubmissionFileDAO $submissionFileDao */
+        $submissionFileDao = DAORegistry::getDAO('SubmissionFileDAO');
         $newSubmissionFile = $submissionFileDao->newDataObject();
         $newSubmissionFile->setData('submissionId', $submission->getId());
         $newSubmissionFile->setData('fileId', $newFileId);
@@ -254,7 +278,7 @@ trait PublicationParser
         $newSubmissionFile->setData('copyrightOwner', '');
         $newSubmissionFile->setData('terms', '');
 
-        $insertedMediaFile = $submissionFileService->add($newSubmissionFile, \Application::get()->getRequest());
+        $submissionFileService->add($newSubmissionFile, Application::get()->getRequest());
     }
 
     /**
@@ -269,7 +293,8 @@ trait PublicationParser
         $filename = $file->getFilename();
 
         // Create a representation of the article (i.e. a galley)
-        $representationDao = \Application::getRepresentationDAO();
+        /** @var ArticleGalleyDAO */
+        $representationDao = Application::getRepresentationDAO();
         $newRepresentation = $representationDao->newDataObject();
         $newRepresentation->setData('publicationId', $publication->getId());
         $newRepresentation->setData('name', $filename, $this->getLocale());
@@ -279,32 +304,29 @@ trait PublicationParser
         $newRepresentationId = $representationDao->insertObject($newRepresentation);
 
         // Add the PDF file and link representation with submission file
-        /** @var SubmissionFileService $submissionFileService */
-        $submissionFileService = \Services::get('submissionFile');
+        /** @var \APP\Services\SubmissionFileService $submissionFileService */
+        $submissionFileService = Services::get('submissionFile');
         /** @var PKPFileService $fileService */
-        $fileService = \Services::get('file');
+        $fileService = Services::get('file');
         $submission = $this->getSubmission();
 
         $submissionDir = $submissionFileService->getSubmissionDir($submission->getData('contextId'), $submission->getId());
-        $newFileId = $fileService->add(
-            $file->getPathname(),
-            $submissionDir . '/' . uniqid() . '.pdf'
-        );
+        $newFileId = $fileService->add($file->getPathname(), $submissionDir . '/' . uniqid() . '.pdf');
 
-        /* @var $submissionFileDao \SubmissionFileDAO */
-        $submissionFileDao = \DAORegistry::getDAO('SubmissionFileDAO');
+        /** @var SubmissionFileDAO $submissionFileDao */
+        $submissionFileDao = DAORegistry::getDAO('SubmissionFileDAO');
         $newSubmissionFile = $submissionFileDao->newDataObject();
         $newSubmissionFile->setData('submissionId', $submission->getId());
         $newSubmissionFile->setData('fileId', $newFileId);
         $newSubmissionFile->setData('genreId', $this->getConfiguration()->getSubmissionGenre()->getId());
-        $newSubmissionFile->setData('fileStage', \SUBMISSION_FILE_PROOF);
+        $newSubmissionFile->setData('fileStage', SUBMISSION_FILE_PROOF);
         $newSubmissionFile->setData('uploaderUserId', $this->getConfiguration()->getEditor()->getId());
-        $newSubmissionFile->setData('createdAt', \Core::getCurrentDate());
-        $newSubmissionFile->setData('updatedAt', \Core::getCurrentDate());
-        $newSubmissionFile->setData('assocType', \ASSOC_TYPE_REPRESENTATION);
+        $newSubmissionFile->setData('createdAt', Core::getCurrentDate());
+        $newSubmissionFile->setData('updatedAt', Core::getCurrentDate());
+        $newSubmissionFile->setData('assocType', ASSOC_TYPE_REPRESENTATION);
         $newSubmissionFile->setData('assocId', $newRepresentationId);
         $newSubmissionFile->setData('name', $filename, $this->getLocale());
-        $submissionFile = $submissionFileService->add($newSubmissionFile, \Application::get()->getRequest());
+        $submissionFile = $submissionFileService->add($newSubmissionFile, Application::get()->getRequest());
 
         $representation = $representationDao->getById($newRepresentationId);
         $representation->setFileId($submissionFile->getData('id'));
@@ -379,7 +401,7 @@ trait PublicationParser
     /**
      * Retrieves the publication date
      */
-    public function getPublicationDate(): \DateTimeImmutable
+    public function getPublicationDate(): DateTimeImmutable
     {
         $node = null;
         // Find the most suitable pub-date node
@@ -389,15 +411,15 @@ trait PublicationParser
             }
         }
         if (!$date = $this->getDateFromNode($node)) {
-            throw new \Exception(__('plugins.importexport.articleImporter.missingPublicationDate'));
+            throw new Exception(__('plugins.importexport.articleImporter.missingPublicationDate'));
         }
         return $date;
     }
 
-    private function _setCoverImage(\Publication $publication): void
+    private function _setCoverImage(Publication $publication): void
     {
         import('lib.pkp.classes.file.TemporaryFileManager');
-        $pfm = new \TemporaryFileManager();
+        $pfm = new TemporaryFileManager();
         $filename = $this->getArticleEntry()->getSubmissionCoverFile();
         if (!$filename) {
             return;
@@ -415,21 +437,21 @@ trait PublicationParser
 
         $pfm->copyFile($filename, $pfm->getBasePath() . "/{$newFileName}");
         /** @var TemporaryFileDAO */
-        $temporaryFileDao = \DAORegistry::getDAO('TemporaryFileDAO');
+        $temporaryFileDao = DAORegistry::getDAO('TemporaryFileDAO');
         /** @var TemporaryFile */
         $temporaryFile = $temporaryFileDao->newDataObject();
 
-        $temporaryFile->setUserId(\Application::get()->getRequest()->getUser()->getId());
+        $temporaryFile->setUserId(Application::get()->getRequest()->getUser()->getId());
         $temporaryFile->setServerFileName($newFileName);
-        $temporaryFile->setFileType(\PKPString::mime_content_type($pfm->getBasePath() . "/$newFileName", $fileExtension));
+        $temporaryFile->setFileType(PKPString::mime_content_type($pfm->getBasePath() . "/$newFileName", $fileExtension));
         $temporaryFile->setFileSize($filename->getSize());
         $temporaryFile->setOriginalFileName($pfm->truncateFileName($filename->getBasename(), 127));
-        $temporaryFile->setDateUploaded(\Core::getCurrentDate());
+        $temporaryFile->setDateUploaded(Core::getCurrentDate());
 
         $temporaryFileDao->insertObject($temporaryFile);
 
         $publication->setData('coverImage', [
-            'dateUploaded' => (new \DateTime())->format('Y-m-d H:i:s'),
+            'dateUploaded' => (new DateTime())->format('Y-m-d H:i:s'),
             'uploadName' => $temporaryFile->getOriginalFileName(),
             'temporaryFileId' => $temporaryFile->getId(),
             'altText' => 'Publication image'
@@ -535,9 +557,10 @@ trait PublicationParser
     /**
      * Process the article keywords
      */
-    private function _processKeywords(\Publication $publication): void
+    private function _processKeywords(Publication $publication): void
     {
-        $submissionKeywordDAO = \DAORegistry::getDAO('SubmissionKeywordDAO');
+        /** @var SubmissionKeywordDAO */
+        $submissionKeywordDAO = DAORegistry::getDAO('SubmissionKeywordDAO');
         $keywords = [];
         foreach ($this->select('front/article-meta/kwd-group') as $node) {
             $locale = $this->getLocale($node->getAttribute('xml:lang'));

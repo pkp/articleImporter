@@ -1,9 +1,9 @@
 <?php
 /**
- * @file plugins/importexport/articleImporter/ArticleImporterPlugin.inc.php
+ * @file ArticleImporterPlugin.inc.php
  *
- * Copyright (c) 2014-2022 Simon Fraser University
- * Copyright (c) 2000-2022 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class ArticleImporterPlugin
@@ -14,14 +14,27 @@
 
 namespace PKP\Plugins\ImportExport\ArticleImporter;
 
+use Application;
+use DAORegistry;
+use Exception;
+use HookRegistry;
+use ImportExportPlugin;
+use JournalDAO;
+use PageRouter;
+use PKP\Plugins\ImportExport\ArticleImporter\Exceptions\ArticleSkippedException;
+use PluginRegistry;
+use Registry;
+use Services;
+use SessionManager;
+use IssueDAO;
+use PKP\Plugins\ImportExport\ArticleImporter\Parsers\APlusPlus\Parser as APlusPlusParser;
+use PKP\Plugins\ImportExport\ArticleImporter\Parsers\Jats\Parser as JatsParser;
+
 import('lib.pkp.classes.plugins.ImportExportPlugin');
 import('lib.pkp.classes.submission.SubmissionFile');
 import('lib.pkp.classes.file.FileManager');
 
-use IssueDAO;
-use PKP\Plugins\ImportExport\ArticleImporter\Exceptions\ArticleSkippedException;
-
-class ArticleImporterPlugin extends \ImportExportPlugin
+class ArticleImporterPlugin extends ImportExportPlugin
 {
     public const DATETIME_FORMAT = 'Y-m-d H:i:s';
     /**
@@ -53,7 +66,7 @@ class ArticleImporterPlugin extends \ImportExportPlugin
     {
         ini_set('memory_limit', -1);
         ini_set('assert.exception', 0);
-        \SessionManager::getManager();
+        SessionManager::getManager();
         // Disable the time limit
         set_time_limit(0);
 
@@ -69,7 +82,7 @@ class ArticleImporterPlugin extends \ImportExportPlugin
         $count = $imported = $failed = $skipped = 0;
         try {
             $configuration = new Configuration(
-                [Parsers\APlusPlus\Parser::class, Parsers\Jats\Parser::class],
+                [APlusPlusParser::class, JatsParser::class],
                 $contextPath,
                 $username,
                 $editorUsername,
@@ -83,24 +96,24 @@ class ArticleImporterPlugin extends \ImportExportPlugin
             //     when running CLI tools. This assumes that given the username supplied should be used as the
             //  authenticated user. To revisit later.
             $user = $configuration->getUser();
-            \Registry::set('user', $user);
+            Registry::set('user', $user);
 
-            /** @var JournalDAO  */
-            $journalDao = \DAORegistry::getDAO('JournalDAO');
+            /** @var JournalDAO */
+            $journalDao = DAORegistry::getDAO('JournalDAO');
             $journal = $journalDao->getByPath($contextPath);
             // Set global context
-            $request = \Application::get()->getRequest();
+            $request = Application::get()->getRequest();
             if (!$request->getContext()) {
-                \HookRegistry::register('Router::getRequestedContextPaths', function (string $hook, array $args) use ($journal): bool {
+                HookRegistry::register('Router::getRequestedContextPaths', function (string $hook, array $args) use ($journal): bool {
                     $args[0] = [$journal->getPath()];
                     return false;
                 });
-                $router = new \PageRouter();
-                $router->setApplication(\Application::get());
+                $router = new PageRouter();
+                $router->setApplication(Application::get());
                 $request->setRouter($router);
             }
 
-            \PluginRegistry::loadCategory('pubIds', true, $configuration->getContext()->getId());
+            PluginRegistry::loadCategory('pubIds', true, $configuration->getContext()->getId());
 
             // Iterates through all the found article entries, already sorted by ascending volume > issue > article
             $iterator = $configuration->getArticleIterator();
@@ -115,7 +128,7 @@ class ArticleImporterPlugin extends \ImportExportPlugin
                 } catch (ArticleSkippedException $e) {
                     $this->_writeLine(__('plugins.importexport.articleImporter.articleSkipped', ['article' => $article, 'message' => $e->getMessage()]));
                     ++$skipped;
-                } catch (\Exception $e) {
+                } catch (Exception $e) {
                     $this->_writeLine(__('plugins.importexport.articleImporter.articleSkipped', ['article' => $article, 'message' => $e->getMessage()]));
                     ++$failed;
                 }
@@ -127,7 +140,7 @@ class ArticleImporterPlugin extends \ImportExportPlugin
             }
 
             $this->_writeLine(__('plugins.importexport.articleImporter.importEnd'));
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             $this->_writeLine(__('plugins.importexport.articleImporter.importError', ['message' => $e->getMessage()]));
         }
         $this->_writeLine(__('plugins.importexport.articleImporter.importStatus', ['count' => $count, 'imported' => $imported, 'failed' => $failed, 'skipped' => $skipped]));
@@ -140,12 +153,12 @@ class ArticleImporterPlugin extends \ImportExportPlugin
     {
         $contextId = $configuration->getContext()->getId();
         /** @var IssueDAO */
-        $issueDao = \DAORegistry::getDAO('IssueDAO');
+        $issueDao = DAORegistry::getDAO('IssueDAO');
         // Clears previous ordering
         $issueDao->deleteCustomIssueOrdering($contextId);
 
         // Retrieves issue IDs sorted by volume and number
-        $rsIssues = \Services::get('issue')->getQueryBuilder([
+        $rsIssues = Services::get('issue')->getQueryBuilder([
             'contextId' => $contextId,
             'isPublished' => true,
             'orderBy' => 'seq',
@@ -164,19 +177,17 @@ class ArticleImporterPlugin extends \ImportExportPlugin
         }
 
         // Sets latest issue as the current one
-        $latestIssue = \Services::get('issue')->get($latestIssue);
+        $latestIssue = Services::get('issue')->get($latestIssue);
         $latestIssue->setData('current', true);
         $issueDao->updateCurrent($contextId, $latestIssue);
     }
 
     /**
      * Outputs a message with a line break
-     *
-     * @param string $message
      */
-    private function _writeLine($message): void
+    private function _writeLine(?string $message): void
     {
-        echo $message, \PHP_EOL;
+        echo $message, PHP_EOL;
         flush();
     }
 

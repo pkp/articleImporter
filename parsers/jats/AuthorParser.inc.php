@@ -1,9 +1,9 @@
 <?php
 /**
- * @file plugins/importexport/articleImporter/parsers/jats/AuthorParser.inc.php
+ * @file parsers/jats/AuthorParser.inc.php
  *
- * Copyright (c) 2014-2022 Simon Fraser University
- * Copyright (c) 2000-2022 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class AuthorParser
@@ -14,6 +14,13 @@
 
 namespace PKP\Plugins\ImportExport\ArticleImporter\Parsers\Jats;
 
+use Author;
+use AuthorDAO;
+use DAORegistry;
+use DOMElement;
+use DOMNode;
+use Publication;
+
 trait AuthorParser
 {
     /** @var int Keeps the count of inserted authors */
@@ -22,9 +29,8 @@ trait AuthorParser
     /**
      * Processes all the authors
      */
-    private function _processAuthors(\Publication $publication): void
+    private function _processAuthors(Publication $publication): void
     {
-        $authorDao = \DAORegistry::getDAO('AuthorDAO');
         $firstAuthor = null;
         foreach ($this->select("front/article-meta/contrib-group[@content-type='authors']/contrib|front/article-meta/contrib-group/contrib[@contrib-type='author']") as $node) {
             $author = $this->_processAuthor($publication, $node);
@@ -38,7 +44,7 @@ trait AuthorParser
     /**
      * Handles an author node
      */
-    private function _processAuthor(\Publication $publication, \DOMNode $authorNode): \Author
+    private function _processAuthor(Publication $publication, DOMNode $authorNode): Author
     {
         $node = $this->selectFirst('name|string-name', $authorNode);
 

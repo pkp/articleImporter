@@ -1,9 +1,9 @@
 <?php
 /**
- * @file plugins/importexport/articleImporter/parsers/jats/SectionParser.inc.php
+ * @file parsers/jats/SectionParser.inc.php
  *
- * Copyright (c) 2014-2022 Simon Fraser University
- * Copyright (c) 2000-2022 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class SectionParser
@@ -14,11 +14,15 @@
 
 namespace PKP\Plugins\ImportExport\ArticleImporter\Parsers\Jats;
 
+use Application;
+use AppLocale;
+use Section;
+
 trait SectionParser
 {
     /** @var bool True if the section was created by this instance */
     private $_isSectionOwner;
-    /** @var \Section Section instance */
+    /** @var Section Section instance */
     private $_section;
 
     /**
@@ -27,14 +31,14 @@ trait SectionParser
     private function _rollbackSection(): void
     {
         if ($this->_isSectionOwner) {
-            \Application::getSectionDAO()->deleteObject($this->_section);
+            Application::getSectionDAO()->deleteObject($this->_section);
         }
     }
 
     /**
      * Parses and retrieves the section, if a section with the same name exists, it will be retrieved
      */
-    public function getSection(): \Section
+    public function getSection(): Section
     {
         static $cache = [];
 
@@ -60,13 +64,13 @@ trait SectionParser
 
         if (!$this->_section) {
             // Tries to find an entry in the database
-            $sectionDao = \Application::getSectionDAO();
+            $sectionDao = Application::getSectionDAO();
             $this->_section = $sectionDao->getByTitle($sectionName, $this->getContextId(), $locale);
         }
 
         if (!$this->_section) {
             // Creates a new section
-            \AppLocale::requireComponents(\LOCALE_COMPONENT_APP_DEFAULT);
+            AppLocale::requireComponents(LOCALE_COMPONENT_APP_DEFAULT);
             $section = $sectionDao->newDataObject();
             $section->setData('contextId', $this->getContextId());
             $section->setData('title', $sectionName, $locale);

@@ -1,9 +1,9 @@
 <?php
 /**
- * @file plugins/importexport/articleImporter/BaseParser.inc.php
+ * @file BaseParser.inc.php
  *
- * Copyright (c) 2014-2022 Simon Fraser University
- * Copyright (c) 2000-2022 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class BaseParser
@@ -44,9 +44,9 @@ abstract class BaseParser
     private $_configuration;
     /** @var ArticleEntry Article entry */
     private $_entry;
-    /** @var \DOMDocument The DOMDocument instance for the XML metadata */
+    /** @var DOMDocument The DOMDocument instance for the XML metadata */
     private $_document;
-    /** @var \DOMXPath The DOMXPath instance for the XML metadata */
+    /** @var DOMXPath The DOMXPath instance for the XML metadata */
     private $_xpath;
     /** @var int Context ID */
     private $_contextId;
@@ -72,22 +72,22 @@ abstract class BaseParser
     /**
      * Parses the publication
      */
-    abstract public function getPublication(): \Publication;
+    abstract public function getPublication(): Publication;
 
     /**
      * Parses the issue
      */
-    abstract public function getIssue(): \Issue;
+    abstract public function getIssue(): Issue;
 
     /**
      * Parses the submission
      */
-    abstract public function getSubmission(): \Submission;
+    abstract public function getSubmission(): Submission;
 
     /**
      * Parses the section
      */
-    abstract public function getSection(): \Section;
+    abstract public function getSection(): Section;
 
     /**
      * Retrieves the public IDs
@@ -104,14 +104,14 @@ abstract class BaseParser
     /**
      * Retrieves the DOCTYPE
      *
-     * @return array \DOMDocumentType[]
+     * @return DOMDocumentType[]
      */
     abstract public function getDocType(): array;
 
     /**
      * Executes the parser
      *
-     * @throws \Exception Throws when something goes wrong, and an attempt to revert the actions will be performed
+     * @throws Exception Throws when something goes wrong, and an attempt to revert the actions will be performed
      */
     public function execute(): void
     {
@@ -121,7 +121,7 @@ abstract class BaseParser
                 ->_ensureSubmissionDoesNotExist()
                 ->_processFullText(true)
                 ->getPublication();
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             $this->rollback();
             throw $e;
         }
@@ -283,16 +283,14 @@ abstract class BaseParser
     /**
      * Validates the metadata file and try to parse the XML
      *
-     * @throws \Exception Throws when there's an error to parse the XML
-     *
-     * @return Parser
+     * @throws Exception Throws when there's an error to parse the XML
      */
-    private function _ensureMetadataIsValidAndParse(): self
+    private function _ensureMetadataIsValidAndParse(): static
     {
         // Tries to parse the XML
-        $this->_document = new \DOMDocument();
+        $this->_document = new DOMDocument('1.0', 'utf-8');
         if (!$this->_document->load($this->getArticleEntry()->getMetadataFile()->getPathname())) {
-            throw new \Exception(__('plugins.importexport.jats.failedToParseXMLDocument'));
+            throw new Exception(__('plugins.importexport.jats.failedToParseXMLDocument'));
         }
 
         // Checks whether the loaded document is supported by the parser (the doctype should match)
@@ -309,7 +307,7 @@ abstract class BaseParser
             throw new InvalidDocTypeException(__('plugins.importexport.articleImporter.invalidDoctype'));
         }
 
-        $this->_xpath = new \DOMXPath($this->_document);
+        $this->_xpath = new DOMXPath($this->_document);
         $this->_xpath->registerNamespace('xlink', 'http://www.w3.org/1999/xlink');
         $this->_locale = $this->getLocale($this->selectText('@xml:lang'));
         return $this;
@@ -319,7 +317,7 @@ abstract class BaseParser
      * Evaluates and retrieves the given XPath expression
      *
      * @param string $path XPath expression
-     * @param \DOMNode $context Optional context node
+     * @param DOMNode $context Optional context node
      */
     public function evaluate(string $path, ?DOMNode $context = null, DOMXPath $xpath = null)
     {
@@ -363,14 +361,14 @@ abstract class BaseParser
     /**
      * Checks if the submission isn't already registered using the public IDs
      *
-     * @throws \Exception Throws when a submission with the same public ID is found
-     *
-     * @return Parser
+     * @throws Exception Throws when a submission with the same public ID is found
      */
-    public function _ensureSubmissionDoesNotExist(): self
+    public function _ensureSubmissionDoesNotExist(): static
     {
+        /** @var SubmissionDAO */
+        $submissionDao = DAORegistry::getDAO('SubmissionDAO');
         foreach ($this->getPublicIds() as $type => $id) {
-            if (\Application::getSubmissionDAO()->getByPubId($type, $id, $this->getContextId())) {
+            if ($submissionDao->getByPubId($type, $id, $this->getContextId())) {
                 throw new AlreadyExistsException(__('plugins.importexport.articleImporter.alreadyExists', ['type' => $type, 'id' => $id]));
             }
         }
@@ -387,17 +385,15 @@ abstract class BaseParser
 
     /**
      * Tries to map the given locale to the PKP standard, returns the default locale if it fails or if the parameter is null
-     *
-     * @param string $locale
      */
     public function getLocale(?string $locale = null): string
     {
-        if ($locale && !\PKPLocale::isLocaleValid($locale)) {
+        if ($locale && !PKPLocale::isLocaleValid($locale)) {
             $locale = strtolower($locale);
             // Tries to convert from recognized formats
-            $iso3 = \PKPLocale::getIso3FromIso1($locale) ?: \PKPLocale::getIso3FromLocale($locale);
+            $iso3 = PKPLocale::getIso3FromIso1($locale) ?: PKPLocale::getIso3FromLocale($locale);
             // If the language part of the locale is the same (ex. fr_FR and fr_CA), then gives preference to context's locale
-            $locale = $iso3 == \PKPLocale::getIso3FromLocale($this->_locale) ? $this->_locale : \PKPLocale::getLocaleFromIso3($iso3);
+            $locale = $iso3 == PKPLocale::getIso3FromLocale($this->_locale) ? $this->_locale : PKPLocale::getLocaleFromIso3($iso3);
         }
         $locale = $locale ?: $this->_locale;
         return $this->_usedLocales[$locale] = $locale;
@@ -427,7 +423,7 @@ abstract class BaseParser
     /**
      * Includes a section into the issue custom order
      */
-    public function includeSection(\Section $section): void
+    public function includeSection(Section $section): void
     {
         static $cache = [];
 
@@ -435,7 +431,7 @@ abstract class BaseParser
         if (!isset($cache[$this->getIssue()->getId()][$section->getId()])) {
             // Adds it to the list
             $cache[$this->getIssue()->getId()][$section->getId()] = true;
-            $sectionDao = \Application::getSectionDAO();
+            $sectionDao = Application::getSectionDAO();
             // Checks whether the section is already present in the issue
             if (!$sectionDao->getCustomSectionOrder($this->getIssue()->getId(), $section->getId())) {
                 $sectionDao->insertCustomSectionOrder($this->getIssue()->getId(), $section->getId(), count($cache[$this->getIssue()->getId()]));
@@ -448,12 +444,12 @@ abstract class BaseParser
      *
      * @param callable $callback The callback will receive two arguments, the current node being parsed and the already transformed textContent of it
      */
-    public function getTextContent(?\DOMNode $node, callable $callback)
+    public function getTextContent(?DOMNode $node, callable $callback)
     {
         if (!$node) {
             return null;
         }
-        if ($node instanceof \DOMText) {
+        if ($node instanceof DOMText) {
             return htmlspecialchars($node->textContent, ENT_HTML5 | ENT_NOQUOTES);
         }
         $data = '';
@@ -466,9 +462,10 @@ abstract class BaseParser
     /**
      * Looks in $issueFolder for a cover image, and applies it to $issue if found
      */
-    public function setIssueCover(string $issueFolder, \Issue &$issue)
+    public function setIssueCover(string $issueFolder, Issue $issue)
     {
-        $issueDao = \DAORegistry::getDAO('IssueDAO');
+        /** @var IssueDAO */
+        $issueDao = DAORegistry::getDAO('IssueDAO');
         $issueCover = null;
         foreach ($this->getConfiguration()->getImageExtensions() as $ext) {
             $checkFile = $issueFolder . DIRECTORY_SEPARATOR . $this->getConfiguration()->getIssueCoverFilename() . '.' . $ext;
@@ -479,7 +476,7 @@ abstract class BaseParser
         }
         if ($issueCover) {
             import('classes.file.PublicFileManager');
-            $publicFileManager = new \PublicFileManager();
+            $publicFileManager = new PublicFileManager();
             $fileparts = explode('.', $issueCover);
             $ext = array_pop($fileparts);
             $newFileName = 'cover_issue_' . $issue->getId() . '_' . $this->getLocale() . '.' . $ext;
@@ -504,7 +501,8 @@ abstract class BaseParser
             return $this->_cachedGenres[$contextId][$extension];
         }
 
-        $genreDao = \DAORegistry::getDAO('GenreDAO');
+        /** @var GenreDAO */
+        $genreDao = DAORegistry::getDAO('GenreDAO');
         if (in_array($extension, $this->getConfiguration()->getImageExtensions())) {
             $genre = $genreDao->getByKey('IMAGE', $contextId);
             $genreId = $genre->getId();
@@ -519,9 +517,11 @@ abstract class BaseParser
     /**
      * Creates a default author for articles with no authors
      */
-    protected function _createDefaultAuthor(\Publication $publication): \Author
+    protected function _createDefaultAuthor(Publication $publication): Author
     {
-        $authorDao = \DAORegistry::getDAO('AuthorDAO');
+        /** @var AuthorDAO */
+        $authorDao = DAORegistry::getDAO('AuthorDAO');
+        /** @var Author */
         $author = $authorDao->newDataObject();
         $author->setData('givenName', $this->getConfiguration()->getContext()->getName($this->getLocale()), $this->getLocale());
         $author->setData('seq', 1);

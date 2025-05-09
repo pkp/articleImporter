@@ -1,9 +1,9 @@
 <?php
 /**
- * @file plugins/importexport/articleImporter/ArticleEntry.inc.php
+ * @file ArticleEntry.inc.php
  *
- * Copyright (c) 2014-2022 Simon Fraser University
- * Copyright (c) 2000-2022 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class ArticleEntry
@@ -14,14 +14,15 @@
 
 namespace PKP\Plugins\ImportExport\ArticleImporter;
 
+use Exception;
 use FilesystemIterator;
-use Illuminate\Contracts\Filesystem\Filesystem;
 use PKP\Plugins\ImportExport\ArticleImporter\Exceptions\InvalidDocTypeException;
 use PKP\Plugins\ImportExport\ArticleImporter\Exceptions\NoSuitableParserException;
+use SplFileInfo;
 
 class ArticleEntry
 {
-    /** @var \SplFileInfo[] List of files */
+    /** @var SplFileInfo[] List of files */
     private $_files = [];
     /** @var int The issue's volume */
     private $_volume;
@@ -47,7 +48,7 @@ class ArticleEntry
     /**
      * Adds a file to the list
      */
-    public function addFile(\SplFileInfo $file): void
+    public function addFile(SplFileInfo $file): void
     {
         $this->_files[] = $file;
     }
@@ -55,7 +56,7 @@ class ArticleEntry
     /**
      * Retrieves the file list
      *
-     * @return \SplFileInfo[]
+     * @return SplFileInfo[]
      */
     public function getFiles(): array
     {
@@ -89,15 +90,15 @@ class ArticleEntry
     /**
      * Retrieves the submission file
      *
-     * @throws \Exception Throws if there's more than one submission file
+     * @throws Exception Throws if there's more than one submission file
      */
-    public function getSubmissionFile(): ?\SplFileInfo
+    public function getSubmissionFile(): ?SplFileInfo
     {
         $count = count($paths = array_filter($this->_files, function ($path) {
             return preg_match('/\.pdf$/i', $path);
         }));
         if ($count > 1) {
-            throw new \Exception(__('plugins.importexport.articleImporter.unexpectedGalley', ['count' => $count]));
+            throw new Exception(__('plugins.importexport.articleImporter.unexpectedGalley', ['count' => $count]));
         }
         return reset($paths) ?: null;
     }
@@ -105,15 +106,15 @@ class ArticleEntry
     /**
      * Retrieves the metadata file
      *
-     * @throws \Exception Throws if there's more than one metadata file
+     * @throws Exception Throws if there's more than one metadata file
      */
-    public function getMetadataFile(): \SplFileInfo
+    public function getMetadataFile(): SplFileInfo
     {
         $count = count($paths = array_filter($this->_files, function ($path) {
             return preg_match('/\.xml$/i', $path);
         }));
         if ($count != 1) {
-            throw new \Exception(__('plugins.importexport.articleImporter.unexpectedMetadata', ['count' => $count]));
+            throw new Exception(__('plugins.importexport.articleImporter.unexpectedMetadata', ['count' => $count]));
         }
         return reset($paths);
     }
@@ -142,8 +143,8 @@ class ArticleEntry
     /**
      * Retrieves the HTML galley file
      *
-     * @throws \Exception Throws if there's more than one
-     * @return \SplFileInfo[]
+     * @throws Exception Throws if there's more than one
+     * @return SplFileInfo[]
      */
     public function getHtmlFiles(): array
     {
@@ -164,22 +165,22 @@ class ArticleEntry
     /**
      * Retrieves the cover file
      *
-     * @throws \Exception Throws if there's more than one cover file
+     * @throws Exception Throws if there's more than one cover file
      */
-    public function getSubmissionCoverFile(): ?\SplFileInfo
+    public function getSubmissionCoverFile(): ?SplFileInfo
     {
         $count = count($paths = array_filter($this->_files, function ($path) {
             return preg_match('/article_cover\.[a-z]{3}/i', $path);
         }));
         if ($count > 1) {
-            throw new \Exception(__('plugins.importexport.articleImporter.unexpectedMetadata', ['count' => $count]));
+            throw new Exception(__('plugins.importexport.articleImporter.unexpectedMetadata', ['count' => $count]));
         }
         return reset($paths) ?: null;
     }
 
     /**
      * Retrieve the supplementary files
-     * @return \SplFileInfo[]
+     * @return SplFileInfo[]
      */
     public function getSupplementaryFiles(): array
     {
