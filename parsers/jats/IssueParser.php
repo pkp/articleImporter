@@ -22,6 +22,8 @@ trait IssueParser
 {
     /** @var bool True if the issue was created by this instance */
     private bool $_isIssueOwner = false;
+    /** @var array{date:?DateTimeImmutable, title: ?string, section: ?string} Issue metadata */
+    private $_issueMeta;
 
     /** @var Issue Issue instance */
     private ?Issue $_issue = null;
@@ -34,6 +36,42 @@ trait IssueParser
         if ($this->_isIssueOwner) {
             Repo::issue()->delete($this->_issue);
         }
+    }
+
+    /**
+     * Get issue meta
+     *
+     * @return array{date:?DateTimeImmutable, title: ?string, section: ?string}
+     */
+    private function getIssueMeta(): array
+    {
+        if ($this->_issueMeta) {
+            return $this->_issueMeta;
+        }
+
+        $document = new DOMDocument('1.0', 'utf-8');
+        $path = $this->getArticleEntry()->getMetadataFile()->getPathInfo()->getPathInfo();
+        $issueMetaPath = $path . '/' . $path->getBasename() . '/' . $path->getBasename() . '.xml';
+        if (file_exists($issueMetaPath)) {
+            return $this->_issueMeta = [
+                'date' => null,
+                'title' => null,
+                'section' => null
+            ];
+        }
+
+        $document->load($issueMetaPath);
+        $xpath = new DOMXPath($document);
+        $doi = $this->getPublicIds()['doi'] ?? null;
+        $node = $this->selectFirst('issue-meta/pub-date', null, $xpath);
+        $publicationDate = $this->getDateFromNode($node, $xpath);
+        $title = $this->selectText('issue-meta/issue-title', null, $xpath);
+        $section = $doi ? $this->selectText("//article-id[.='" . $doi . "']/ancestor::issue-subject-group/issue-subject-title", null, $xpath) : null;
+        return $this->_issueMeta = [
+            'date' => $publicationDate,
+            'title' => $title,
+            'section' => $section
+        ];
     }
 
     /**
@@ -63,12 +101,15 @@ trait IssueParser
         $this->_issue = $issues->first();
 
         if (!$this->_issue) {
+            $locale = $this->getLocale();
+
             // Create a new issue
             $issue = Repo::issue()->dao->newDataObject();
 
-	    $node = $this->selectFirst("front/article-meta/pub-date[@pub-type='collection']");
-            $publicationDate = $this->getDateFromNode($node) ?? $this->getPublicationDate();
+            $node = $this->selectFirst("front/article-meta/pub-date[@pub-type='collection']");
+            $publicationDate = $this->getIssueMeta()['date'] ?? $this->getDateFromNode($node) ?? $this->getPublicationDate();
 
+            $issue->setData('title', $this->getIssueMeta()['title'], $locale);
             $issue->setData('journalId', $this->getContextId());
             $issue->setData('volume', $volume);
             $issue->setData('number', $issueNumber);
@@ -80,11 +121,11 @@ trait IssueParser
             $issue->setData('showVolume', true);
             $issue->setData('showNumber', true);
             $issue->setData('showYear', true);
-            $issue->setData('showTitle', false);
+            $issue->setData('showTitle', true);
             $issue->stampModified();
             Repo::issue()->add($issue);
 
-            $issueFolder = (string)$entry->getSubmissionPathInfo()->getPathInfo();
+            $issueFolder = (string)$entry->getSubmissionFile()->getPathInfo();
             $this->setIssueCover($issueFolder, $issue);
 
             $this->_isIssueOwner = true;
