@@ -39,11 +39,13 @@ abstract class BaseParser
     /** @var Configuration Configuration */
     private Configuration $_configuration;
     /** @var ArticleEntry Article entry */
-    private ArticleEntry $_entry;
-    /** @var DOMDocument The DOMDocument instance for the XML metadata */
-    private DOMDocument $_document;
+    protected ArticleEntry $_entry;
+    /**
+     * The XML document
+     */
+    protected ?DOMDocument $_document = null;
     /** @var DOMXPath The DOMXPath instance for the XML metadata */
-    private DOMXPath $_xpath;
+    protected ?DOMXPath $_xpath = null;
     /** @var int Context ID */
     private int $_contextId;
     /** @var string Default locale, grabbed from the submission or the context's primary locale */
