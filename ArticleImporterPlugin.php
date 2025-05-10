@@ -88,6 +88,7 @@ class ArticleImporterPlugin extends ImportExportPlugin
             // Iterates through all the found article entries, already sorted by ascending volume > issue > article
             $iterator = $configuration->getArticleIterator();
             $count = count($iterator);
+			/** @var ArticleEntry */
             foreach ($iterator as $entry) {
                 $article = implode('-', [$entry->getVolume(), $entry->getIssue(), $entry->getArticle()]);
                 try {
