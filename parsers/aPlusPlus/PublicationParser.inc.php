@@ -39,107 +39,113 @@ trait PublicationParser
     public function getPublication(): Publication
     {
         $publicationDate = $this->getPublicationDate() ?: $this->getIssue()->getDatePublished();
+        $latestPublication = null;
 
-        // Create the publication
-        /** @var PublicationDAO */
-        $publicationDao = DAORegistry::getDAO('PublicationDAO');
-        $publication = $publicationDao->newDataObject();
-        $publication->setData('submissionId', $this->getSubmission()->getId());
-        $publication->setData('status', STATUS_PUBLISHED);
-        $publication->setData('version', 1);
-        $publication->setData('seq', $this->getSubmission()->getId());
-        $publication->setData('accessStatus', $this->_getAccessStatus());
-        $publication->setData('datePublished', $publicationDate->format(ArticleImporterPlugin::DATETIME_FORMAT));
-        $publication->setData('sectionId', $this->getSection()->getId());
-        $publication->setData('issueId', $this->getIssue()->getId());
-        $publication->setData('urlPath', null);
+        // Create a publication for each version
+        foreach ($this->getArticleEntry()->getVersions() as $version) {
+            // Create the publication
+            /** @var PublicationDAO */
+            $publicationDao = DAORegistry::getDAO('PublicationDAO');
+            $publication = $publicationDao->newDataObject();
+            $publication->setData('submissionId', $this->getSubmission()->getId());
+            $publication->setData('status', STATUS_PUBLISHED);
+            $publication->setData('version', (int)$version);
+            $publication->setData('seq', $this->getSubmission()->getId());
+            $publication->setData('accessStatus', $this->_getAccessStatus());
+            $publication->setData('datePublished', $publicationDate->format(ArticleImporterPlugin::DATETIME_FORMAT));
+            $publication->setData('sectionId', $this->getSection()->getId());
+            $publication->setData('issueId', $this->getIssue()->getId());
+            $publication->setData('urlPath', null);
 
-        // Set article pages
-        $firstPage = $this->selectText('Journal/Volume/Issue/Article/ArticleInfo/ArticleFirstPage');
-        $lastPage = $this->selectText('Journal/Volume/Issue/Article/ArticleInfo/ArticleLastPage');
-        if ($firstPage || $lastPage) {
-            $publication->setData('pages', "{$firstPage}" . ($lastPage ? "-{$lastPage}" : ''));
-        }
-
-        $hasTitle = false;
-        $publicationLocale = null;
-
-        // Set title
-        foreach ($this->select('Journal/Volume/Issue/Article/ArticleInfo/ArticleTitle') as $node) {
-            $locale = $this->getLocale($node->getAttribute('Language'));
-            // The publication language is defined by the first title node
-            if (!$publicationLocale) {
-                $publicationLocale = $locale;
+            // Set article pages
+            $firstPage = $this->selectText('Journal/Volume/Issue/Article/ArticleInfo/ArticleFirstPage');
+            $lastPage = $this->selectText('Journal/Volume/Issue/Article/ArticleInfo/ArticleLastPage');
+            if ($firstPage || $lastPage) {
+                $publication->setData('pages', "{$firstPage}" . ($lastPage ? "-{$lastPage}" : ''));
             }
-            $value = $this->selectText('.', $node);
-            $hasTitle |= strlen($value);
-            $publication->setData('title', $value, $locale);
-        }
 
-        if (!$hasTitle) {
-            throw new Exception(__('plugins.importexport.articleImporter.articleTitleMissing'));
-        }
+            $hasTitle = false;
+            $publicationLocale = null;
 
-        $publication->setData('locale', $publicationLocale);
-        $publication->setData('language', PKPLocale::getIso1FromLocale($publicationLocale));
-
-        // Set subtitle
-        foreach ($this->select('Journal/Volume/Issue/Article/ArticleInfo/ArticleSubTitle') as $node) {
-            $publication->setData('subtitle', $this->selectText('.', $node), $this->getLocale($node->getAttribute('Language')));
-        }
-
-        // Set article abstract
-        foreach ($this->select('Journal/Volume/Issue/Article/ArticleHeader/Abstract') as $abstract) {
-            $value = trim($this->getTextContent($abstract, function ($node, $content) use ($abstract) {
-                // Ignores the main Heading tag
-                if ($node->nodeName == 'Heading' && $node->parentNode === $abstract) {
-                    return '';
+            // Set title
+            foreach ($this->select('Journal/Volume/Issue/Article/ArticleInfo/ArticleTitle') as $node) {
+                $locale = $this->getLocale($node->getAttribute('Language'));
+                // The publication language is defined by the first title node
+                if (!$publicationLocale) {
+                    $publicationLocale = $locale;
                 }
-                // Transforms the known tags, the remaining ones will be stripped
-                if ($node->nodeName == 'Heading') {
-                    return "<p><strong>{$content}</strong></p>";
+                $value = $this->selectText('.', $node);
+                $hasTitle |= strlen($value);
+                $publication->setData('title', $value, $locale);
+            }
+
+            if (!$hasTitle) {
+                throw new Exception(__('plugins.importexport.articleImporter.articleTitleMissing'));
+            }
+
+            $publication->setData('locale', $publicationLocale);
+            $publication->setData('language', PKPLocale::getIso1FromLocale($publicationLocale));
+
+            // Set subtitle
+            foreach ($this->select('Journal/Volume/Issue/Article/ArticleInfo/ArticleSubTitle') as $node) {
+                $publication->setData('subtitle', $this->selectText('.', $node), $this->getLocale($node->getAttribute('Language')));
+            }
+
+            // Set article abstract
+            foreach ($this->select('Journal/Volume/Issue/Article/ArticleHeader/Abstract') as $abstract) {
+                $value = trim($this->getTextContent($abstract, function ($node, $content) use ($abstract) {
+                    // Ignores the main Heading tag
+                    if ($node->nodeName == 'Heading' && $node->parentNode === $abstract) {
+                        return '';
+                    }
+                    // Transforms the known tags, the remaining ones will be stripped
+                    if ($node->nodeName == 'Heading') {
+                        return "<p><strong>{$content}</strong></p>";
+                    }
+                    $tag = [
+                        'Emphasis' => 'em',
+                        'Subscript' => 'sub',
+                        'Superscript' => 'sup',
+                        'Para' => 'p'
+                    ][$node->nodeName] ?? null;
+                    return $tag ? "<{$tag}>{$content}</{$tag}>" : $content;
+                }));
+                if ($value) {
+                    $publication->setData('abstract', $value, $this->getLocale($abstract->getAttribute('Language')));
                 }
-                $tag = [
-                    'Emphasis' => 'em',
-                    'Subscript' => 'sub',
-                    'Superscript' => 'sup',
-                    'Para' => 'p'
-                ][$node->nodeName] ?? null;
-                return $tag ? "<{$tag}>{$content}</{$tag}>" : $content;
-            }));
-            if ($value) {
-                $publication->setData('abstract', $value, $this->getLocale($abstract->getAttribute('Language')));
             }
+
+            // Set public IDs
+            $pubIdPlugins = false;
+            foreach ($this->getPublicIds() as $type => $value) {
+                if ($type !== 'publisher-id' && !$pubIdPlugins) {
+                    $pubIdPlugins = PluginRegistry::loadCategory('pubIds', true, $this->getContextId());
+                }
+                $publication->setData('pub-id::' . $type, $value);
+            }
+
+            // Set copyright year and holder and license permissions
+            $publication->setData('copyrightHolder', $this->selectText('Journal/Volume/Issue/Article/ArticleInfo/ArticleCopyright/CopyrightHolderName'), $this->getLocale());
+            $publication->setData('copyrightNotice', null);
+            $publication->setData('copyrightYear', $this->selectText('Journal/Volume/Issue/Article/ArticleInfo/ArticleCopyright/CopyrightYear') ?: $publicationDate->format('Y'));
+            $publication->setData('licenseUrl', null);
+
+            // Inserts the publication and updates the submission's publication ID
+            $publication = Services::get('publication')->add($publication, Application::get()->getRequest());
+
+            $this->_processKeywords($publication);
+            $this->_processAuthors($publication);
+
+            // Handle PDF galley
+            $this->_insertPDFGalley($publication, $version);
+
+            // Publishes the article
+            Services::get('publication')->publish($publication);
+
+            $latestPublication = $publication;
         }
 
-        // Set public IDs
-        $pubIdPlugins = false;
-        foreach ($this->getPublicIds() as $type => $value) {
-            if ($type !== 'publisher-id' && !$pubIdPlugins) {
-                $pubIdPlugins = PluginRegistry::loadCategory('pubIds', true, $this->getContextId());
-            }
-            $publication->setData('pub-id::' . $type, $value);
-        }
-
-        // Set copyright year and holder and license permissions
-        $publication->setData('copyrightHolder', $this->selectText('Journal/Volume/Issue/Article/ArticleInfo/ArticleCopyright/CopyrightHolderName'), $this->getLocale());
-        $publication->setData('copyrightNotice', null);
-        $publication->setData('copyrightYear', $this->selectText('Journal/Volume/Issue/Article/ArticleInfo/ArticleCopyright/CopyrightYear') ?: $publicationDate->format('Y'));
-        $publication->setData('licenseUrl', null);
-
-        // Inserts the publication and updates the submission's publication ID
-        $publication = Services::get('publication')->add($publication, Application::get()->getRequest());
-
-        $this->_processKeywords($publication);
-        $this->_processAuthors($publication);
-
-        // Handle PDF galley
-        $this->_insertPDFGalley($publication);
-
-        // Publishes the article
-        Services::get('publication')->publish($publication);
-
-        return $publication;
+        return $latestPublication;
     }
 
     /**
@@ -156,9 +162,12 @@ trait PublicationParser
     /**
      * Inserts the PDF galley
      */
-    private function _insertPDFGalley(Publication $publication): void
+    private function _insertPDFGalley(Publication $publication, string $version): void
     {
-        $file = $this->getArticleEntry()->getSubmissionFile();
+        $file = $this->getArticleEntry()->getSubmissionFile($version);
+        if (!$file) {
+            return;
+        }
         $filename = $file->getFilename();
 
         // Create a representation of the article (i.e. a galley)

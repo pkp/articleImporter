@@ -43,11 +43,13 @@ abstract class BaseParser
     /** @var Configuration Configuration */
     private $_configuration;
     /** @var ArticleEntry Article entry */
-    private $_entry;
-    /** @var DOMDocument The DOMDocument instance for the XML metadata */
-    private $_document;
+    protected ArticleEntry $_entry;
+    /**
+     * The XML document
+     */
+    protected ?DOMDocument $_document = null;
     /** @var DOMXPath The DOMXPath instance for the XML metadata */
-    private $_xpath;
+    protected ?DOMXPath $_xpath = null;
     /** @var int Context ID */
     private $_contextId;
     /** @var string Default locale, grabbed from the submission or the context's primary locale */
@@ -113,13 +115,12 @@ abstract class BaseParser
      *
      * @throws Exception Throws when something goes wrong, and an attempt to revert the actions will be performed
      */
-    public function execute(): void
+    protected function execute(): void
     {
         try {
             $this
                 ->_ensureMetadataIsValidAndParse()
                 ->_ensureSubmissionDoesNotExist()
-                ->_processFullText(true)
                 ->getPublication();
         } catch (Exception $e) {
             $this->rollback();
@@ -127,189 +128,60 @@ abstract class BaseParser
         }
     }
 
-    private function _processFullText(bool $overwrite = false): static
-    {
-        static $xslt;
-
-        if (!$this->selectFirst('/article/body') || (!$overwrite && count($this->getArticleEntry()->getHtmlFiles()))) {
-            return $this;
-        }
-        libxml_use_internal_errors(true);
-        if (!$xslt) {
-            $document = new DOMDocument('1.0', 'utf-8');
-            $document->load(__DIR__ . '/jats/xslt/main/jats-html.xsl');
-            $xslt = new XSLTProcessor();
-            $xslt->registerPHPFunctions();
-            $xslt->importStyleSheet($document);
-        }
-
-        $metadata = $this->getArticleEntry()->getMetadataFile();
-        $xml = new DOMDocument('1.0', 'utf-8');
-        $xml->load($metadata);
-        $xpath = new DOMXPath($xml);
-        $xpath->registerNamespace('xlink', 'http://www.w3.org/1999/xlink');
-        $defaultLang = $xml->documentElement->getAttributeNS('http://www.w3.org/XML/1998/namespace', 'lang') ?: $this->getLocale();
-        $langs = [$defaultLang => 0];
-        foreach ($this->select("body//sec[@xml:lang!='{$defaultLang}']", null, $xpath) as $sec) {
-            $langs[$sec->getAttributeNS('http://www.w3.org/XML/1998/namespace', 'lang')] = 0;
-        }
-        foreach (array_keys($langs) as $lang) {
-            $xml = new DOMDocument('1.0', 'utf-8');
-            $xml->load($metadata);
-            $xpath = new DOMXPath($xml);
-            $xpath->registerNamespace('xlink', 'http://www.w3.org/1999/xlink');
-
-            foreach ($this->select('//contrib-group/contrib', null, $xpath) as $contribNode) {
-                $affiliations = [];
-                $xrefs = [];
-                /** @var DOMElement */
-                foreach ($contribNode->getElementsByTagName('xref') as $xref) {
-                    $id = $xref->getAttribute('rid');
-                    switch ($xref->getAttribute('ref-type')) {
-                        case 'fn':
-                            /** @var DOMElement $node */
-                            if ($node = $this->selectFirst("//back/fn-group/fn[@id='{$id}']", null, $xpath)) {
-                                $node = $node->cloneNode(true);
-                                /** @var DOMElement */
-                                foreach (iterator_to_array($node->getElementsByTagName('label')) as $label) {
-                                    $label->parentNode->removeChild($label);
-                                }
-                                $this->fixJatsTags($node);
-                                $bioNode = $node->ownerDocument->createElement('bio');
-                                foreach (iterator_to_array($node->childNodes) as $childNode) {
-                                    $bioNode->appendChild($childNode);
-                                }
-                                $xrefs[] = $xref;
-                                $contribNode->appendChild($bioNode);
-                            }
-                            break;
-
-                        case 'aff':
-                            if ($affiliation = preg_replace(['/\r\n|\n\r|\r|\n/', '/\s{2,}/', '/\s+([,.])/'], [' ', ' ', '$1'], trim($this->selectText("../../aff[@id='{$id}']", $xref, $xpath)))) {
-                                $affiliations[] = $affiliation;
-                            }
-                            $xrefs[] = $xref;
-                            break;
-                    }
-                }
-                if (count($affiliations)) {
-                    $node = $contribNode->ownerDocument->createElement('aff', implode('; ', $affiliations));
-                    $contribNode->appendChild($node);
-                }
-                foreach($xrefs as $xref) {
-                    $xref->parentNode->removeChild($xref);
-                }
-            }
-
-            if (count($langs) > 1) {
-                $filter = "body//sec[@xml:lang!='{$lang}']";
-                if ($defaultLang !== $lang) {
-                    $filter .= " | body//sec[not(@xml:lang)]";
-                }
-                $isSharedFnGroup = count($this->select('back/fn-group', null, $xpath)) !== count($langs);
-                if (!$isSharedFnGroup) {
-                    $filter .= " | back/fn-group[@xml:lang!='{$lang}']";
-                    if ($defaultLang !== $lang) {
-                        $filter .= " | back/fn-group[not(@xml:lang)]";
-                    }
-                }
-                foreach (iterator_to_array($this->select($filter, null, $xpath)) as $node) {
-                    $node->parentNode->removeChild($node);
-                }
-            }
-
-            /** @var DOMElement */
-            foreach (iterator_to_array($this->select('body//sec//label', null, $xpath)) as $label) {
-                for($title = $label; ($title = $title->nextSibling) && $title->nodeType !== XML_ELEMENT_NODE;);
-                /** @var DOMElement $title */
-                if ($title && $title->tagName === 'title') {
-                    $title->insertBefore($title->ownerDocument->createTextNode($label->textContent . ' '), $title->firstChild);
-                    $label->parentNode->removeChild($label);
-                }
-            }
-            $switch = function (DOMElement $main, DOMElement $translation): void {
-                $namespace = 'http://www.w3.org/XML/1998/namespace';
-                $mainNodes = iterator_to_array($main->childNodes);
-                $translationNodes = iterator_to_array($translation->childNodes);
-                foreach ($mainNodes as $node) {
-                    $translation->appendChild($node);
-                }
-                foreach ($translationNodes as $node) {
-                    $main->appendChild($node);
-                }
-
-                $translationLang = $translation->parentNode->getAttributeNS($namespace, 'lang');
-                $translation->parentNode->setAttributeNS($namespace, 'lang', $main->getAttributeNS($namespace, 'lang'));
-                $main->setAttributeNS($namespace, 'lang', $translationLang);
-            };
-            /** @var DOMElement */
-            if (
-                ($title = $this->selectFirst("/article/front/article-meta/title-group/article-title[@xml:lang!='{$lang}']", null, $xpath))
-                && ($translatedTitle = $this->selectFirst("/article/front/article-meta/title-group/trans-title-group[@xml:lang='{$lang}']/trans-title", null, $xpath))
-            ) {
-                $switch($title, $translatedTitle);
-            }
-            if (
-                ($title = $this->selectFirst("/article/front/article-meta/title-group/subtitle[@xml:lang!='{$lang}']", null, $xpath))
-                && ($translatedTitle = $this->selectFirst("/article/front/article-meta/title-group/trans-title-group[@xml:lang='{$lang}']/trans-subtitle", null, $xpath))
-            ) {
-                $switch($title, $translatedTitle);
-            }
-            $xml->documentElement->setAttributeNS('http://www.w3.org/XML/1998/namespace', 'lang', $lang);
-
-            /** @var DOMElement */
-            foreach (iterator_to_array($this->select("//xref", null, $xpath)) as $xref) {
-                if (!$this->selectFirst("//[@id='" . $xref->getAttribute('rid') . "']", null, $xpath)) {
-                    echo "Dropped invalid xref to: " . $xref->getAttribute('rid') . "\n";
-                    $xref->parentNode->removeChild($xref);
-                }
-            }
-
-            $output = $xslt->transformToXML($xml);
-
-            if ($output === false) {
-                throw new Exception("Failed to create HTML file from JATS XML: \n" . print_r(libxml_get_errors(), true));
-            }
-            $path = $metadata->getPathInfo() . '/' . $metadata->getBasename($metadata->getExtension()) . (count($langs) > 1 ? "{$lang}." : '') . 'html';
-
-            file_put_contents($path, $output);
-            $this->getArticleEntry()->reloadFiles();
-        }
-
-        //exit;
-        return $this;
-    }
-
     /**
      * Validates the metadata file and try to parse the XML
      *
      * @throws Exception Throws when there's an error to parse the XML
      */
-    private function _ensureMetadataIsValidAndParse(): static
+    protected function _ensureMetadataIsValidAndParse(): static
     {
-        // Tries to parse the XML
-        $this->_document = new DOMDocument('1.0', 'utf-8');
-        if (!$this->_document->load($this->getArticleEntry()->getMetadataFile()->getPathname())) {
-            throw new Exception(__('plugins.importexport.jats.failedToParseXMLDocument'));
-        }
+        // Tries to parse the XML for each version
+        foreach ($this->getArticleEntry()->getVersions() as $version) {
+            $document = new DOMDocument('1.0', 'utf-8');
+            if (!$document->load($this->getArticleEntry()->getMetadataFile($version)->getPathname())) {
+                throw new Exception(__('plugins.importexport.jats.failedToParseXMLDocument'));
+            }
 
-        // Checks whether the loaded document is supported by the parser (the doctype should match)
-        $docType = $this->_document->doctype;
-        $supportedDocTypes = $this->getDocType();
-        $found = false;
-        foreach ($supportedDocTypes as $supportedDocType) {
-            if ([$docType->systemId, $docType->publicId, $docType->name] == [$supportedDocType->systemId, $supportedDocType->publicId, $supportedDocType->name]) {
-                $found = true;
-                break;
+            // Checks whether the loaded document is supported by the parser (the doctype should match)
+            $docType = $document->doctype;
+            $supportedDocTypes = $this->getDocType();
+            $found = false;
+            foreach ($supportedDocTypes as $supportedDocType) {
+                if ([$docType->systemId, $docType->publicId, $docType->name] == [$supportedDocType->systemId, $supportedDocType->publicId, $supportedDocType->name]) {
+                    $found = true;
+                    break;
+                }
+            }
+            if (!$found) {
+                throw new InvalidDocTypeException(__('plugins.importexport.articleImporter.invalidDoctype'));
             }
         }
-        if (!$found) {
-            throw new InvalidDocTypeException(__('plugins.importexport.articleImporter.invalidDoctype'));
-        }
 
+        // Use the first version for the main document
+        $version = $this->getArticleEntry()->getVersions()[0];
+        $this->_document = new DOMDocument('1.0', 'utf-8');
+        $this->_document->load($this->getArticleEntry()->getMetadataFile($version)->getPathname());
         $this->_xpath = new DOMXPath($this->_document);
         $this->_xpath->registerNamespace('xlink', 'http://www.w3.org/1999/xlink');
         $this->_locale = $this->getLocale($this->selectText('@xml:lang'));
+        return $this;
+    }
+
+    /**
+     * Checks if the submission isn't already registered using the public IDs
+     *
+     * @throws Exception Throws when a submission with the same public ID is found
+     */
+    protected function _ensureSubmissionDoesNotExist(): static
+    {
+        /** @var SubmissionDAO */
+        $submissionDao = DAORegistry::getDAO('SubmissionDAO');
+        $version = $this->getArticleEntry()->getVersions()[0];
+        foreach ($this->getPublicIds() as $type => $id) {
+            if ($submissionDao->getByPubId($type, $id, $this->getContextId())) {
+                throw new AlreadyExistsException(__('plugins.importexport.articleImporter.alreadyExists', ['type' => $type, 'id' => $id]));
+            }
+        }
         return $this;
     }
 
@@ -356,23 +228,6 @@ abstract class BaseParser
     public function selectFirst(string $path, ?DOMNode $context = null, DOMXPath $xpath = null): ?object
     {
         return $this->select($path, $context, $xpath)->item(0);
-    }
-
-    /**
-     * Checks if the submission isn't already registered using the public IDs
-     *
-     * @throws Exception Throws when a submission with the same public ID is found
-     */
-    public function _ensureSubmissionDoesNotExist(): static
-    {
-        /** @var SubmissionDAO */
-        $submissionDao = DAORegistry::getDAO('SubmissionDAO');
-        foreach ($this->getPublicIds() as $type => $id) {
-            if ($submissionDao->getByPubId($type, $id, $this->getContextId())) {
-                throw new AlreadyExistsException(__('plugins.importexport.articleImporter.alreadyExists', ['type' => $type, 'id' => $id]));
-            }
-        }
-        return $this;
     }
 
     /**

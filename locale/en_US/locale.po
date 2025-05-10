@@ -66,9 +66,6 @@ msgstr "The user specified as editor is not assigned an Editor role."
 msgid "plugins.importexport.articleImporter.missingPubDate"
 msgstr "The article publication date is missing."
 
-msgid "plugins.importexport.articleImporter.invalidStructure"
-msgstr "The folder does not match the format \"volume #/issue #/article #\", found at \"{$path}\"."
-
 msgid "plugins.importexport.articleImporter.missingGalley"
 msgstr "The article galley is missing for \"{$article}\""
 
