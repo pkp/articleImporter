@@ -29,6 +29,7 @@ use SessionManager;
 use IssueDAO;
 use PKP\Plugins\ImportExport\ArticleImporter\Parsers\APlusPlus\Parser as APlusPlusParser;
 use PKP\Plugins\ImportExport\ArticleImporter\Parsers\Jats\Parser as JatsParser;
+use Throwable;
 
 import('lib.pkp.classes.plugins.ImportExportPlugin');
 
@@ -125,7 +126,7 @@ class ArticleImporterPlugin extends ImportExportPlugin
                 } catch (ArticleSkippedException $e) {
                     $this->_writeLine(__('plugins.importexport.articleImporter.articleSkipped', ['article' => $article, 'message' => $e->getMessage()]));
                     ++$skipped;
-                } catch (Exception $e) {
+                } catch (Throwable $e) {
                     $this->_writeLine(__('plugins.importexport.articleImporter.articleSkipped', ['article' => $article, 'message' => $e->getMessage()]));
                     ++$failed;
                 }
@@ -137,7 +138,7 @@ class ArticleImporterPlugin extends ImportExportPlugin
             }
 
             $this->_writeLine(__('plugins.importexport.articleImporter.importEnd'));
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             $this->_writeLine(__('plugins.importexport.articleImporter.importError', ['message' => $e->getMessage()]));
         }
         $this->_writeLine(__('plugins.importexport.articleImporter.importStatus', ['count' => $count, 'imported' => $imported, 'failed' => $failed, 'skipped' => $skipped]));

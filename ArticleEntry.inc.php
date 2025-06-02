@@ -15,6 +15,7 @@
 namespace PKP\Plugins\ImportExport\ArticleImporter;
 
 use Generator;
+use PKP\Plugins\ImportExport\ArticleImporter\Exceptions\ArticleSkippedException;
 use SplFileInfo;
 
 class ArticleEntry
@@ -36,10 +37,9 @@ class ArticleEntry
     public function __construct(SplFileInfo $directory)
     {
         $this->_directory = $directory;
-        $pathInfo = $directory->getPathInfo();
         foreach ([&$this->_article, &$this->_issue, &$this->_volume] as &$item) {
-            $item = $pathInfo->getFilename();
-            $pathInfo = $pathInfo->getPathInfo();
+            $item = $directory->getFilename();
+            $directory = $directory->getPathInfo();
         }
     }
 
@@ -50,10 +50,8 @@ class ArticleEntry
      */
     public function getVersions(): Generator
     {
-        foreach (new \DirectoryIterator($this->_directory->getPathname()) as $versionDir) {
-            if (!$versionDir->isDot() && $versionDir->isDir()) {
-                yield new ArticleVersion($this, $versionDir);
-            }
+        foreach (glob("{$this->_directory->getPathname()}/*", GLOB_ONLYDIR) as $versionDir) {
+            yield new ArticleVersion($this, new SplFileInfo($versionDir));
         }
     }
 
@@ -62,7 +60,7 @@ class ArticleEntry
      */
     public function getVolume(): int
     {
-        return $this->_volume;
+        return (int) $this->_volume;
     }
 
     /**
@@ -84,10 +82,17 @@ class ArticleEntry
     /**
      * Processes the article
      */
-	public function process(Configuration $configuration): void
-	{
-		foreach ($this->getVersions() as $version) {
-			$version->process($configuration);
-		}
-	}
+    public function process(Configuration $configuration): void
+    {
+        $processed = false;
+        $submission = null;
+        foreach ($this->getVersions() as $version) {
+            $submission = $version->process($configuration, $submission)->getSubmission();
+            $processed = true;
+        }
+
+        if (!$processed) {
+            throw new ArticleSkippedException('No versions were found');
+        }
+    }
 }

@@ -57,6 +57,7 @@ trait AuthorParser
             $firstName = $this->getConfiguration()->getContext()->getName($this->getLocale());
         }
         $email = $this->selectText('email', $authorNode);
+        $orcid = $this->selectText("uri[@content-type='orcid']", $authorNode);
         $affiliations = [];
         $biography = null;
 
@@ -91,6 +92,16 @@ trait AuthorParser
             }
         }
 
+        foreach ($this->select('sup', $authorNode) as $node) {
+            $affiliation = '';
+            foreach ($this->select("../aff/label[.='{$node->textContent}']/following-sibling::node()", $authorNode) as $node) {
+                $affiliation .= $node->textContent;
+            }
+            if ($affiliation = preg_replace(['/\r\n|\n\r|\r|\n/', '/\s{2,}/', '/\s+([,.])/'], [' ', ' ', '$1'], trim($affiliation))) {
+                $affiliations[] = $affiliation;
+            }
+        }
+
         $email = $email ?: $this->getConfiguration()->getEmail();
 
         /** @var AuthorDAO */
@@ -101,6 +112,11 @@ trait AuthorParser
         if ($lastName) {
             $author->setData('familyName', $lastName, $this->getLocale());
         }
+
+        if ($orcid) {
+            $author->setData('email', $orcid);
+        }
+
         $author->setData('email', $email);
         $author->setData('affiliation', implode('; ', $affiliations), $this->getLocale());
         $author->setData('biography', $biography, $this->getLocale());

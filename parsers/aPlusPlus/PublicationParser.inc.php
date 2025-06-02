@@ -42,7 +42,7 @@ trait PublicationParser
         // Create the publication
         /** @var PublicationDAO */
         $publicationDao = DAORegistry::getDAO('PublicationDAO');
-		/** @var Publication */
+        /** @var Publication */
         $publication = $publicationDao->newDataObject();
         $publication->setData('submissionId', $this->getSubmission()->getId());
         $publication->setData('status', STATUS_PUBLISHED);
@@ -122,13 +122,16 @@ trait PublicationParser
         $publication->setData('copyrightNotice', null);
         $publication->setData('copyrightYear', $this->selectText('Journal/Volume/Issue/Article/ArticleInfo/ArticleCopyright/CopyrightYear') ?: $publicationDate->format('Y'));
         $publication->setData('licenseUrl', null);
-		$this->setPublicationCoverImage($publication);
+        $this->setPublicationCoverImage($publication);
 
         // Inserts the publication and updates the submission's publication ID
         $publication = Services::get('publication')->add($publication, Application::get()->getRequest());
 
         $this->_processKeywords($publication);
+        // Reload object with keywords (otherwise they will be cleared later on)
+        $publication = Services::get('publication')->get($publication->getId());
         $this->_processAuthors($publication);
+        $publication = Services::get('publication')->edit($publication, [], Application::get()->getRequest());
 
         // Handle PDF galley
         $this->_insertPDFGalley($publication);
@@ -212,7 +215,8 @@ trait PublicationParser
      */
     public function getPublicIds(): array
     {
-        $ids = [];
+        $articleEntry = $this->getArticleEntry();
+        $ids = ['publisher-id' => "{$articleEntry->getVolume()}.{$articleEntry->getIssue()}.{$articleEntry->getArticle()}.{$this->getArticleVersion()->getVersion()}"];
         if ($value = $this->selectText('Journal/Volume/Issue/Article/@ID')) {
             $ids['publisher-id'] = $value;
         }

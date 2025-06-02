@@ -15,9 +15,7 @@
 namespace PKP\Plugins\ImportExport\ArticleImporter\Parsers\Jats;
 
 use DateTimeImmutable;
-use DOMDocumentType;
 use DOMElement;
-use DOMImplementation;
 use DOMNode;
 use DOMXPath;
 use PKP\Plugins\ImportExport\ArticleImporter\BaseParser;
@@ -32,16 +30,11 @@ class Parser extends BaseParser
     use AuthorParser;
 
     /**
-     * Retrieves the DOCTYPE
-     *
-     * @return DOMDocumentType[]
+     * Retrieves whether the parser can deal with the underlying document
      */
-    public function getDocType(): array
+    public function canParse(): bool
     {
-        return [
-            (new DOMImplementation())->createDocumentType('article', '-//EDP//DTD EDP Publishing JATS v1.0 20130606//EN', 'JATS-edppublishing1.dtd'),
-            (new DOMImplementation())->createDocumentType('article', '-//NLM//DTD Journal Archiving with OASIS Tables v3.0 20080202//EN', 'http://dtd.nlm.nih.gov/archiving/3.0/archive-oasis-article3.dtd'),
-        ];
+        return (bool) $this->selectFirst('front/article-meta/title-group/article-title');
     }
 
     /**

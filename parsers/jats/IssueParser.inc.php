@@ -132,7 +132,7 @@ trait IssueParser
             $issue->stampModified();
             $issueDao->insertObject($issue);
 
-			$this->setIssueCover($issue);
+            $this->setIssueCoverImage($issue);
 
             $this->_isIssueOwner = true;
             $this->_issue = $issue;

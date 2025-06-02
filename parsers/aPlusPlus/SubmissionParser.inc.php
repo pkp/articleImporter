@@ -26,13 +26,15 @@ trait SubmissionParser
 {
     /** @var Submission Submission instance */
     private $_submission;
+    /** @var bool True if the submission was created by this instance */
+    private $_isSubmissionOwner;
 
     /**
      * Rollbacks the operation
      */
     private function _rollbackSubmission(): void
     {
-        if ($this->_submission) {
+        if ($this->_isSubmissionOwner && $this->_submission) {
             /** @var SubmissionDAO */
             $submissionDao = DAORegistry::getDAO('SubmissionDAO');
             $submissionDao->deleteObject($this->_submission);
@@ -61,10 +63,20 @@ trait SubmissionParser
 
         // Creates the submission
         $this->_submission = Services::get('submission')->add($article, Application::get()->getRequest());
+        $this->_isSubmissionOwner = true;
 
         $this->_assignEditor();
 
         return $this->_submission;
+    }
+
+    /**
+     * Sets the submission
+     */
+    public function setSubmission(Submission $submission): void
+    {
+        $this->_submission = $submission;
+        $this->_isSubmissionOwner = false;
     }
 
     /**

@@ -15,7 +15,6 @@
 namespace PKP\Plugins\ImportExport\ArticleImporter\Parsers\APlusPlus;
 
 use DateTimeImmutable;
-use DOMDocumentType;
 use DOMImplementation;
 use DOMNode;
 use PKP\Plugins\ImportExport\ArticleImporter\BaseParser;
@@ -30,13 +29,11 @@ class Parser extends BaseParser
     use AuthorParser;
 
     /**
-     * Retrieves the DOCTYPE
-     *
-     * @return DOMDocumentType[]
+     * Retrieves whether the parser can deal with the underlying document
      */
-    public function getDocType(): array
+    public function canParse(): bool
     {
-        return [(new DOMImplementation())->createDocumentType('Publisher', '-//Springer-Verlag//DTD A++ V2.4//EN', 'http://devel.springer.de/A++/V2.4/DTD/A++V2.4.dtd')];
+        return (bool) $this->selectFirst('Journal/Volume/Issue/Article/ArticleInfo/ArticleTitle');
     }
 
     /**
