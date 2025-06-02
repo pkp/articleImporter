@@ -24,8 +24,6 @@ use APP\file\PublicFileManager;
 use APP\facades\Repo;
 use DateTimeImmutable;
 use DOMDocument;
-use DOMDocumentType;
-use DOMElement;
 use DOMNode;
 use DOMNodeList;
 use DOMText;
@@ -39,19 +37,18 @@ use PKP\facades\Locale;
 use PKP\file\TemporaryFile;
 use PKP\file\TemporaryFileDAO;
 use PKP\file\TemporaryFileManager;
-use PKP\Plugins\ImportExport\ArticleImporter\ArticleVersion;
 use PKP\submission\GenreDAO;
-use XSLTProcessor;
+use Throwable;
 
 abstract class BaseParser
 {
+    public const DATETIME_FORMAT = 'Y-m-d H:i:s';
+
     /** @var Configuration Configuration */
     private Configuration $_configuration;
     /** @var ArticleVersion Article version */
     protected $_version;
-    /**
-     * The XML document
-     */
+    /** @var ?DOMDocument The XML document */
     protected ?DOMDocument $_document = null;
     /** @var DOMXPath The DOMXPath instance for the XML metadata */
     protected ?DOMXPath $_xpath = null;
@@ -62,18 +59,21 @@ abstract class BaseParser
     /** @var int[] cache of genres by context id and extension */
     private array $_cachedGenres;
     /** @var string[] */
-    private $_usedLocales = [];
+    private array $_usedLocales = [];
 
     /**
      * Constructor
      */
-    public function __construct(Configuration $configuration, ArticleVersion $version)
+    public function __construct(Configuration $configuration, ArticleVersion $version, ?Submission $submission = null)
     {
         $this->_configuration = $configuration;
         $this->_version = $version;
         $context = $this->_configuration->getContext();
         $this->_contextId = $context->getId();
         $this->_locale = $context->getPrimaryLocale();
+        if ($submission) {
+            $this->setSubmission($submission);
+        }
     }
 
     /**
@@ -90,6 +90,11 @@ abstract class BaseParser
      * Parses the submission
      */
     abstract public function getSubmission(): Submission;
+
+    /**
+     * Sets the submission
+     */
+    abstract public function setSubmission(Submission $submission): void;
 
     /**
      * Parses the section
@@ -109,11 +114,9 @@ abstract class BaseParser
     abstract public function rollback(): void;
 
     /**
-     * Retrieves the DOCTYPE
-     *
-     * @return DOMDocumentType[]
+     * Retrieves whether the parser can deal with the underlying document
      */
-    abstract public function getDocType(): array;
+    abstract public function canParse(): bool;
 
     /**
      * Executes the parser
@@ -127,7 +130,7 @@ abstract class BaseParser
                 ->_ensureMetadataIsValidAndParse()
                 ->_ensureSubmissionDoesNotExist()
                 ->getPublication();
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             $this->rollback();
             throw $e;
         }
@@ -142,27 +145,18 @@ abstract class BaseParser
     {
         $document = new DOMDocument('1.0', 'utf-8');
         if (!$document->load($this->_version->getMetadataFile()->getPathname())) {
-            throw new Exception(__('plugins.importexport.jats.failedToParseXMLDocument'));
-        }
-
-        // Checks whether the loaded document is supported by the parser (the doctype should match)
-        $docType = $document->doctype;
-        $supportedDocTypes = $this->getDocType();
-        $found = false;
-        foreach ($supportedDocTypes as $supportedDocType) {
-            if ([$docType->systemId, $docType->publicId, $docType->name] == [$supportedDocType->systemId, $supportedDocType->publicId, $supportedDocType->name]) {
-                $found = true;
-                break;
-            }
-        }
-        if (!$found) {
-            throw new InvalidDocTypeException(__('plugins.importexport.articleImporter.invalidDoctype'));
+            throw new Exception(__('plugins.importexport.articleImporter.failedToParseXMLDocument'));
         }
 
         $this->_document = $document;
         $this->_xpath = new DOMXPath($this->_document);
         $this->_xpath->registerNamespace('xlink', 'http://www.w3.org/1999/xlink');
         $this->_locale = $this->getLocale($this->selectText('@xml:lang'));
+
+        if (!$this->canParse()) {
+            throw new InvalidDocTypeException(__('plugins.importexport.articleImporter.invalidDoctype'));
+        }
+
         return $this;
     }
 
@@ -171,12 +165,19 @@ abstract class BaseParser
      *
      * @throws Exception Throws when a submission with the same public ID is found
      */
-    public function _ensureSubmissionDoesNotExist(): static
+    private function _ensureSubmissionDoesNotExist(): static
     {
         foreach ($this->getPublicIds() as $type => $id) {
-            if (Repo::submission()->dao->getByPubId($type, $id, $this->getContextId())) {
+            $submission = Repo::submission()->dao->getByPubId($type, $id, $this->getContextId());
+            if (!$submission) {
+                continue;
+            }
+
+            if ($type === 'publisher-id') {
                 throw new AlreadyExistsException(__('plugins.importexport.articleImporter.alreadyExists', ['type' => $type, 'id' => $id]));
             }
+
+            echo __('plugins.importexport.articleImporter.duplicateWarning', ['type' => $type, 'id' => $id]);
         }
         return $this;
     }
@@ -244,7 +245,7 @@ abstract class BaseParser
             // Tries to convert from recognized formats
             $iso3 = Locale::getIso3FromIso1($locale) ?: Locale::getIso3FromLocale($locale);
             // If the language part of the locale is the same (ex. fr_FR and fr_CA), then gives preference to context's locale
-            $locale = $iso3 == Locale::getIso3FromLocale($this->_locale) ? $this->_locale : Locale::getLocaleFromIso3($iso3);
+            $locale = $iso3 == Locale::getIso3FromLocale($this->_locale) ? $this->_locale : Locale::getLocaleFromIso3((string) $iso3);
         }
         $locale = $locale ?: $this->_locale;
         return $this->_usedLocales[$locale] = $locale;
@@ -318,10 +319,56 @@ abstract class BaseParser
     }
 
     /**
+     * Find a Genre ID for a context and extension
+     *
+     * @param $contextId
+     * @param $extension
+     *
+     * @return int
+     */
+    protected function _getGenreId(int $contextId, string $extension)
+    {
+        if (isset($this->_cachedGenres[$contextId][$extension])) {
+            return $this->_cachedGenres[$contextId][$extension];
+        }
+
+        /** @var GenreDAO */
+        $genreDao = DAORegistry::getDAO('GenreDAO');
+        if (in_array($extension, $this->getConfiguration()->getImageExtensions())) {
+            $genre = $genreDao->getByKey('IMAGE', $contextId);
+            $genreId = $genre->getId();
+        } else {
+            $genre = $genreDao->getByKey('MULTIMEDIA', $contextId);
+            $genreId = $genre->getId();
+        }
+        $this->_cachedGenres[$contextId][$extension] = $genreId;
+        return $genreId;
+    }
+
+    /**
+     * Creates a default author for articles with no authors
+     */
+    protected function _createDefaultAuthor(Publication $publication): Author
+    {
+        $author = Repo::author()->newDataObject();
+        $author->setData('givenName', $this->getConfiguration()->getContext()->getName($this->getLocale()), $this->getLocale());
+        $author->setData('seq', 1);
+        $author->setData('publicationId', $publication->getId());
+        $author->setData('email', $this->getConfiguration()->getEmail());
+        $author->setData('includeInBrowse', true);
+        $author->setData('primaryContact', true);
+        $author->setData('userGroupId', $this->getConfiguration()->getAuthorGroupId());
+
+        Repo::author()->add($author);
+        return $author;
+    }
+
+    /**
      * Looks in $issueFolder for a cover image, and applies it to $issue if found
      */
     public function setIssueCoverImage(Issue $issue)
     {
+        $issueCover = null;
         $issueFolder = (string) $this->getArticleVersion()->getPath();
         foreach (new GlobIterator("{$issueFolder}/../../" . $this->getConfiguration()->getCoverFilename() . '.*') as $file) {
             if (in_array(strtolower($file->getExtension()), $this->getConfiguration()->getImageExtensions())) {
@@ -346,7 +393,6 @@ abstract class BaseParser
      */
     public function setPublicationCoverImage(Publication $publication): void
     {
-        import('lib.pkp.classes.file.TemporaryFileManager');
         $fileManager = new TemporaryFileManager();
         $filename = $this->getArticleVersion()->getSubmissionCoverFile();
         if (!$filename) {
@@ -385,50 +431,5 @@ abstract class BaseParser
             'temporaryFileId' => $temporaryFile->getId(),
             'altText' => 'Publication image'
         ], $this->getLocale());
-    }
-
-    /**
-     * Find a Genre ID for a context and extension
-     *
-     * @param $contextId
-     * @param $extension
-     *
-     * @return int
-     */
-    protected function _getGenreId(int $contextId, string $extension)
-    {
-        if (isset($this->_cachedGenres[$contextId][$extension])) {
-            return $this->_cachedGenres[$contextId][$extension];
-        }
-
-        /** @var GenreDAO */
-        $genreDao = DAORegistry::getDAO('GenreDAO');
-        if (in_array($extension, $this->getConfiguration()->getImageExtensions())) {
-            $genre = $genreDao->getByKey('IMAGE', $contextId);
-            $genreId = $genre->getId();
-        } else {
-            $genre = $genreDao->getByKey('MULTIMEDIA', $contextId);
-            $genreId = $genre->getId();
-        }
-        $this->_cachedGenres[$contextId][$extension] = $genreId;
-        return $genreId;
-    }
-
-    /**
-     * Creates a default author for articles with no authors
-     */
-    protected function _createDefaultAuthor(Publication $publication): Author
-    {
-        $author = Repo::author()->dao->newDataObject();
-        $author->setData('givenName', $this->getConfiguration()->getContext()->getName($this->getLocale()), $this->getLocale());
-        $author->setData('seq', 1);
-        $author->setData('publicationId', $publication->getId());
-        $author->setData('email', $this->getConfiguration()->getEmail());
-        $author->setData('includeInBrowse', true);
-        $author->setData('primaryContact', true);
-        $author->setData('userGroupId', $this->getConfiguration()->getAuthorGroupId());
-
-        Repo::author()->add($author);
-        return $author;
     }
 }

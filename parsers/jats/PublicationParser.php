@@ -12,18 +12,14 @@
 
 namespace APP\plugins\importexport\articleImporter\parsers\jats;
 
-use APP\plugins\importexport\articleImporter\ArticleImporterPlugin;
 use APP\submission\Submission;
 use DateTimeImmutable;
 use DOMDocument;
 use DOMElement;
 use DOMXPath;
 use Exception;
-use FilesystemIterator;
-use PKP\file\TemporaryFileDAO;
 use PKP\Services\PKPFileService;
 use APP\publication\Publication;
-use PKP\file\TemporaryFile;
 use PKP\db\DAORegistry;
 use APP\core\Services;
 use PKP\core\Core;
@@ -32,12 +28,11 @@ use PKP\i18n\LocaleConversion;
 use PKP\submission\Genre;
 use PKP\plugins\PluginRegistry;
 use PKP\submissionFile\SubmissionFile;
-use PKP\file\TemporaryFileManager;
-use PKP\core\PKPString;
 use APP\facades\Repo;
 use PKP\controlledVocab\ControlledVocab;
 use SplFileInfo;
 use Stringy\Stringy;
+use XSLTProcessor;
 
 trait PublicationParser
 {
@@ -50,15 +45,12 @@ trait PublicationParser
         $version = $this->getArticleVersion()->getVersion();
 
         // Create the publication
-        /** @var PublicationDAO */
-        $publicationDao = DAORegistry::getDAO('PublicationDAO');
-        /** @var Publication */
-        $publication = $publicationDao->newDataObject();
+        $publication = Repo::publication()->newDataObject();
         $publication->setData('submissionId', $this->getSubmission()->getId());
-        $publication->setData('status', STATUS_PUBLISHED);
-        $publication->setData('version', (int) $version);
-        $publication->setData('seq', $this->getSubmission()->getId());
-        $publication->setData('accessStatus', ARTICLE_ACCESS_OPEN);
+        $publication->setData('status', Submission::STATUS_PUBLISHED);
+        $publication->setData('version', $version);
+        $publication->setData('seq', $version);
+        $publication->setData('accessStatus', Submission::ARTICLE_ACCESS_OPEN);
         $publication->setData('datePublished', $publicationDate->format(static::DATETIME_FORMAT));
         $publication->setData('sectionId', $this->getSection()->getId());
         $publication->setData('issueId', $this->getIssue()->getId());
@@ -101,8 +93,8 @@ trait PublicationParser
         if (!$hasTitle) {
             throw new Exception(__('plugins.importexport.articleImporter.articleTitleMissing'));
         }
-        $publication->setData('language', LocaleConversion::getIso1FromLocale($this->getSubmission()->getData('locale')));
 
+        $publication->setData('language', LocaleConversion::getIso1FromLocale($this->getSubmission()->getData('locale')));
 
         // Set abstract
         foreach ($this->select('front/article-meta/abstract|front/article-meta/trans-abstract') as $node) {
@@ -123,7 +115,6 @@ trait PublicationParser
         }
 
         // Set public IDs
-        $pubIdPlugins = false;
         foreach ($this->getPublicIds() as $type => $value) {
             if ($type === 'doi') {
                 $doiFound = Repo::doi()->getCollector()->filterByIdentifier($value)->getMany()->first();
@@ -138,9 +129,6 @@ trait PublicationParser
                     $publication->setData('doiId', $doiId);
                 }
             } else {
-                if ($type !== 'publisher-id' && !$pubIdPlugins) {
-                    $pubIdPlugins = PluginRegistry::loadCategory('pubIds', true, $this->getContextId());
-                }
                 $publication->setData('pub-id::' . $type, $value);
             }
         }
@@ -156,28 +144,23 @@ trait PublicationParser
         $this->_processCategories($publication);
 
         // Inserts the publication and updates the submission
-    Repo::publication()->dao->insert($publication);
-    $submission = $this->getSubmission();
-    $submission->setData('currentPublicationId', $publication->getId());
-    Repo::submission()->edit($submission, []);
-
-            $this->_processKeywords($publication);
-            $this->_processAuthors($publication);
-
+        Repo::publication()->add($publication);
         $this->_processKeywords($publication);
+        // Reload object with keywords (otherwise they will be cleared later on)
+        $publication = Repo::publication()->get($publication->getId());
         $this->_processAuthors($publication);
+        // Save primary author
+        $publication = Repo::publication()->edit($publication, []);
 
         // Handle PDF galley
         $this->_insertPDFGalley($publication);
 
         // Store the JATS XML
-        $this->_insertXMLSubmissionFile($publication);
+        $this->_insertXMLSubmissionFile();
         // Process full text and generate HTML files
         $this->_processFullText(true);
         $this->_insertHTMLGalley($publication);
         $this->_insertSupplementaryGalleys($publication);
-
-        $publication = Repo::publication()->get($publication->getId());
 
         // Publishes the article
         Repo::publication()->publish($publication);
@@ -190,25 +173,30 @@ trait PublicationParser
      */
     private function _processCitations(Publication $publication): Publication
     {
-        $citationText = '';
+        $citations = '';
         foreach ($this->select('/article/back/ref-list/ref') as $citation) {
-            $data = $citation->ownerDocument->saveHTML($citation);
-            if (strlen($data)) {
-                $document = new DOMDocument('1.0', 'utf-8');
-                $document->preserveWhiteSpace = false;
-                $document->loadXML($data);
-                $document->documentElement->normalize();
-                $data = $document->documentElement->textContent . "\n";
-            } else {
-                $data = trim($citation->textContent);
+            $document = new DOMDocument();
+            /** @var DOMElement */
+            foreach ($citation->getElementsByTagName('pub-id') as $pubId) {
+                $type = $pubId->attributes->getNamedItem('pub-id-type');
+                if ($type && $type->textContent === 'doi') {
+                    $doi = str_replace('https://doi.org/', '', $pubId->textContent);
+                    $pubId->textContent = '<a href="https://doi.org/' . $doi . '">https://doi.org/' . $doi . '</a>';
+                }
             }
-            if (!$data) {
-                continue;
+            $label = $citation->getElementsByTagName('label')->item(0);
+            $citationData = $citation->getElementsByTagName('mixed-citation')->item(0);
+            $citationText = preg_replace(['/\r\n|\n\r|\r|\n/', '/\s{2,}/', '/\s+([,.])/'], [' ', ' ', '$1'], trim($citationData ? $citationData->textContent : ''));
+            $citation->textContent = trim($label ? $label->textContent . ' ' : '') . $citationText . "\n";
+            $document->preserveWhiteSpace = false;
+            $document->loadXML($citation->C14N());
+            $document->documentElement->normalize();
+            if ($document->documentElement->textContent) {
+                $citations .= $document->documentElement->textContent . "\n";
             }
-            $citationText .= $data . "\n";
         }
-        if ($citationText) {
-            $publication->setData('citationsRaw', $citationText);
+        if ($citations) {
+            $publication->setData('citationsRaw', $citations);
         }
         return $publication;
     }
@@ -216,7 +204,7 @@ trait PublicationParser
     /**
      * Inserts the XML as a JATS file
      */
-    private function _insertXMLSubmissionFile(Publication $publication): void
+    private function _insertXMLSubmissionFile(): void
     {
         $file = $this->getArticleVersion()->getMetadataFile();
         $filename = $file->getPathname();
@@ -236,7 +224,7 @@ trait PublicationParser
             $submissionDir . '/' . uniqid() . '.xml'
         );
 
-        $newSubmissionFile = Repo::submissionFile()->dao->newDataObject();
+        $newSubmissionFile = Repo::submissionFile()->newDataObject();
         $newSubmissionFile->setData('submissionId', $submission->getId());
         $newSubmissionFile->setData('fileId', $newFileId);
         $newSubmissionFile->setData('genreId', $genreId);
@@ -271,7 +259,7 @@ trait PublicationParser
         $submissionDir = Repo::submissionFile()->getSubmissionDir($submission->getData('contextId'), $submission->getId());
         $newFileId = $fileService->add($filePath, $submissionDir . '/' . uniqid() . '.' . $fileType);
 
-        $newSubmissionFile = Repo::submissionFile()->dao->newDataObject();
+        $newSubmissionFile = Repo::submissionFile()->newDataObject();
         $newSubmissionFile->setData('submissionId', $submission->getId());
         $newSubmissionFile->setData('fileId', $newFileId);
         $newSubmissionFile->setData('fileStage', SubmissionFile::SUBMISSION_FILE_DEPENDENT);
@@ -303,7 +291,7 @@ trait PublicationParser
         $filename = $file->getFilename();
 
         // Create a galley for the article
-        $newGalley = Repo::galley()->dao->newDataObject();
+        $newGalley = Repo::galley()->newDataObject();
         $newGalley->setData('publicationId', $publication->getId());
         $newGalley->setData('name', $filename, $this->getLocale());
         $newGalley->setData('seq', 1);
@@ -319,7 +307,7 @@ trait PublicationParser
         $submissionDir = Repo::submissionFile()->getSubmissionDir($submission->getData('contextId'), $submission->getId());
         $newFileId = $fileService->add($file->getPathname(), $submissionDir . '/' . uniqid() . '.pdf');
 
-        $newSubmissionFile = Repo::submissionFile()->dao->newDataObject();
+        $newSubmissionFile = Repo::submissionFile()->newDataObject();
         $newSubmissionFile->setData('submissionId', $submission->getId());
         $newSubmissionFile->setData('fileId', $newFileId);
         $newSubmissionFile->setData('genreId', $this->getConfiguration()->getSubmissionGenre()->getId());
@@ -347,7 +335,7 @@ trait PublicationParser
         /** @var SplFileInfo */
         foreach ($files as $i => $file) {
             // Create a galley for the article
-            $newGalley = Repo::galley()->dao->newDataObject();
+            $newGalley = Repo::galley()->newDataObject();
             $newGalley->setData('publicationId', $publication->getId());
             $newGalley->setData('name', $file->getBasename(), $this->getLocale());
             $newGalley->setData('seq', 2 + $htmlFiles + $i);
@@ -388,7 +376,8 @@ trait PublicationParser
      */
     public function getPublicIds(): array
     {
-        $ids = [];
+        $articleEntry = $this->getArticleEntry();
+        $ids = ['publisher-id' => "{$articleEntry->getVolume()}.{$articleEntry->getIssue()}.{$articleEntry->getArticle()}.{$this->getArticleVersion()->getVersion()}"];
         foreach ($this->select('front/article-meta/article-id') as $node) {
             $ids[strtolower($node->getAttribute('pub-id-type'))] = $this->selectText('.', $node);
         }
@@ -423,7 +412,7 @@ trait PublicationParser
             $pieces = explode('.', $file->getBasename(".{$file->getExtension()}"));
             $lang = end($pieces);
             // Create a galley of the article (i.e. a galley)
-            $newGalley = Repo::galley()->dao->newDataObject();
+            $newGalley = Repo::galley()->newDataObject();
             $newGalley->setData('publicationId', $publication->getId());
             $newGalley->setData('name', $file->getBasename(), $this->getLocale($lang));
             $newGalley->setData('seq', 2 + $i);
@@ -438,32 +427,32 @@ trait PublicationParser
             /** @var PKPFileService $fileService */
             $fileService = Services::get('file');
 
-            $content = str_replace('src="graphic/', 'src="', file_get_contents($file->getPathname()));
-            if (preg_match_all('/src="([^"]*)"/', $content, $matches)) {
-                foreach ($matches[1] as $path) {
-                    $path = urldecode($path);
-                    if ($path[0] === '/') {
-                        continue;
-                    }
-                    $realPath = $file->getPath() . "/graphic/{$path}";
-                    $extension = pathinfo($realPath, PATHINFO_EXTENSION);
-                    if (strtolower(substr($extension, 0, 3)) === 'tif') {
-                        $newFilename = basename($path, ".{$extension}") . '.jpg';
-                        $content = str_replace($path, $newFilename, $content);
-                        if (!file_exists($realPath = $file->getPath() . '/graphic/' . $newFilename)) {
-                            throw new Exception("Convert {$realPath} from {$extension} to jpg");
-                        }
-                    } else if (!file_exists($realPath)) {
-                        throw new Exception("Missing file {$realPath}");
-                    }
+            $requiredFiles = [];
+            $content = preg_replace_callback('/src="([^"]*)"/', function ($match) use ($file, &$requiredFiles) {
+                [$match, $src] = $match;
+                $src = urldecode($src);
+                if ($src[0] === '/') {
+                    return $match;
                 }
-            }
+                $realPath = "{$file->getPath()}/{$src}";
+                $extension = strtolower(pathinfo($realPath, PATHINFO_EXTENSION));
+                if (substr($extension, 0, 3) === 'tif') {
+                    echo __('plugins.importexport.articleImporter.tiffWarning', ['file' => $file]) . "\n";
+                }
+                if (!is_file($realPath)) {
+                    echo __('plugins.importexport.articleImporter.warningMissingFile', ['file' => $file, 'missingFile' => $src]) . "\n";
+                    return $match;
+                }
+                $requiredFiles[] = $realPath;
+                return str_replace($src, basename($realPath), $match);
+            }, file_get_contents($file->getPathname()));
+
             $content = preg_replace_callback('/href="([^"]*)"/', function ($href) use ($content) {
                 if (filter_var($href[1], FILTER_VALIDATE_EMAIL, FILTER_FLAG_EMAIL_UNICODE)) {
                     $href[0] = str_replace($href[1], "mailto:{$href[1]}", $href[0]);
                 }
                 if ($href[1][0] === '#' && is_bool(strpos($content, 'id="' . substr($href[1], 1) . '"'))) {
-                    echo "ID not found: {$href[1]}\n";
+                    echo __('plugins.importexport.articleImporter.warningMissingAnchor', ['anchor' => $href[1]]) . "\n";
                 }
                 return $href[0];
             }, $content);
@@ -475,7 +464,7 @@ trait PublicationParser
             $newFileId = $fileService->add($filename, $submissionDir . '/' . uniqid() . '.html');
             unlink($filename);
 
-            $newSubmissionFile = Repo::submissionFile()->dao->newDataObject();
+            $newSubmissionFile = Repo::submissionFile()->newDataObject();
             $newSubmissionFile->setData('submissionId', $submission->getId());
             $newSubmissionFile->setData('fileId', $newFileId);
             $newSubmissionFile->setData('genreId', $this->getConfiguration()->getSubmissionGenre()->getId());
@@ -490,11 +479,8 @@ trait PublicationParser
             $submissionFileId = Repo::submissionFile()->add($newSubmissionFile);
 
             /** @var SplFileInfo */
-            foreach (is_dir($file->getPath() . '/graphic') ? new FilesystemIterator($file->getPath() . '/graphic') : [] as $assetFilename) {
-                if ($assetFilename->isDir()) {
-                    throw new Exception("Unexpected directory {$assetFilename}");
-                }
-                $this->_createDependentFile($submission, $userId, $submissionFileId, $assetFilename);
+            foreach ($requiredFiles as $path) {
+                $this->_createDependentFile($submission, $userId, $submissionFileId, $path);
             }
 
             $galley = Repo::galley()->get($newGalleyId);
@@ -532,37 +518,19 @@ trait PublicationParser
             $name = $this->selectText('subject', $node);
             $locale = $this->getLocale($node->getAttribute('xml:lang'));
 
-            // CUSTOM: Category names might have two languages, splitted by "/", where the second is "en_US"
-            $name = preg_split('@\s*/\s*@', $name, 2);
-            $names = [$locale => reset($name)];
-            if (count($name) > 1) {
-                $names['en_US'] = end($name);
-            }
-
             // Tries to find an entry in the cache
-            foreach ($names as $locale => $name) {
-                if ($category = $cache[$this->getContextId()][$locale][$name] ?? null) {
-                    break;
-                }
-            }
-
-            $path = Stringy::create(reset($names))->toLowerCase()->dasherize()->regexReplace('[^a-z0-9\-\_.]', '') . '-' . substr($locale, 0, 2);
+            $category = $cache[$this->getContextId()][$locale][$name] ?? null;
+            $path = Stringy::create($name)->toLowerCase()->dasherize()->regexReplace('[^a-z0-9\-\_.]', '') . '-' . substr($locale, 0, 2);
             if (!$category) {
                 // Tries to find an entry in the database
-                foreach ($names as $locale => $name) {
-                    if ($category = Repo::category()->getCollector()->filterByPaths([$path])->filterByContextIds([$this->getContextId()])->getMany()->first()) {
-                        break;
-                    }
-                }
+                $category = Repo::category()->getCollector()->filterByPaths([$path])->filterByContextIds([$this->getContextId()])->getMany()->first();
             }
 
             if (!$category) {
                 // Creates a new category
                 $category = Repo::category()->newDataObject();
                 $category->setData('contextId', $this->getContextId());
-                foreach ($names as $locale => $name) {
-                    $category->setData('title', $name, $locale);
-                }
+                $category->setData('title', $name, $locale);
                 $category->setData('parentId', null);
                 $category->setData('path', $path);
                 $category->setData('sortOption', 'datePublished-2');
@@ -572,9 +540,7 @@ trait PublicationParser
             }
 
             // Caches the entry
-            foreach ($names as $locale => $name) {
-                $cache[$this->getContextId()][$locale][$name] = $category;
-            }
+            $cache[$this->getContextId()][$locale][$name] = $category;
             $categoryIds[] = $category->getId();
         }
         $publication->setData('categoryIds', $categoryIds);
@@ -599,7 +565,7 @@ trait PublicationParser
         libxml_use_internal_errors(true);
         if (!$xslt) {
             $document = new DOMDocument('1.0', 'utf-8');
-            $document->load(__DIR__ . '/xslt/main/jats-html.xsl');
+            $document->load(__DIR__ . '/xslt/jats-html.xsl');
             $xslt = new XSLTProcessor();
             $xslt->registerPHPFunctions();
             $xslt->importStyleSheet($document);
@@ -680,16 +646,6 @@ trait PublicationParser
                 }
             }
 
-            /** @var DOMElement */
-            foreach (iterator_to_array($this->select('body//sec//label', null, $xpath)) as $label) {
-                for ($title = $label; ($title = $title->nextSibling) && $title->nodeType !== XML_ELEMENT_NODE; )
-                    ;
-                /** @var DOMElement $title */
-                if ($title && $title->tagName === 'title') {
-                    $title->insertBefore($title->ownerDocument->createTextNode($label->textContent . ' '), $title->firstChild);
-                    $label->parentNode->removeChild($label);
-                }
-            }
             $switch = function (DOMElement $main, DOMElement $translation): void {
                 $namespace = 'http://www.w3.org/XML/1998/namespace';
                 $mainNodes = iterator_to_array($main->childNodes);
@@ -705,7 +661,6 @@ trait PublicationParser
                 $translation->parentNode->setAttributeNS($namespace, 'lang', $main->getAttributeNS($namespace, 'lang'));
                 $main->setAttributeNS($namespace, 'lang', $translationLang);
             };
-            /** @var DOMElement */
             if (
                 ($title = $this->selectFirst("/article/front/article-meta/title-group/article-title[@xml:lang!='{$lang}']", null, $xpath))
                 && ($translatedTitle = $this->selectFirst("/article/front/article-meta/title-group/trans-title-group[@xml:lang='{$lang}']/trans-title", null, $xpath))
@@ -720,9 +675,9 @@ trait PublicationParser
             }
             $xml->documentElement->setAttributeNS('http://www.w3.org/XML/1998/namespace', 'lang', $lang);
 
-            /** @var DOMElement */
+            /** @var DOMElement $xref */
             foreach (iterator_to_array($this->select("//xref", null, $xpath)) as $xref) {
-                if (!$this->selectFirst("//[@id='" . $xref->getAttribute('rid') . "']", null, $xpath)) {
+                if (!$this->selectFirst("//*[@id='" . $xref->getAttribute('rid') . "']", null, $xpath)) {
                     echo "Dropped invalid xref to: " . $xref->getAttribute('rid') . "\n";
                     $xref->parentNode->removeChild($xref);
                 }
@@ -733,7 +688,7 @@ trait PublicationParser
             if ($output === false) {
                 throw new Exception("Failed to create HTML file from JATS XML: \n" . print_r(libxml_get_errors(), true));
             }
-            $path = $metadata->getPathInfo() . '/' . $metadata->getBasename($metadata->getExtension()) . (count($langs) > 1 ? "-{$lang}." : '.') . 'html';
+            $path = $metadata->getPathInfo() . '/' . $metadata->getBasename($metadata->getExtension()) . (count($langs) > 1 ? "-{$lang}" : '') . 'html';
 
             file_put_contents($path, $output);
         }

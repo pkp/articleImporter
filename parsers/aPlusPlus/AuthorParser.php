@@ -20,7 +20,7 @@ use DOMElement;
 trait AuthorParser
 {
     /** @var int Keeps the count of inserted authors */
-    private $_authorCount = 0;
+    private int $_authorCount = 0;
 
     /**
      * Processes all the authors
@@ -64,7 +64,7 @@ trait AuthorParser
             $affiliation = $this->selectText("Journal/Volume/Issue/Article/ArticleHeader/AuthorGroup/Affiliation[@ID='{$affiliationId}']/OrgName");
         }
 
-        $author = Repo::author()->dao->newDataObject();
+        $author = Repo::author()->newDataObject();
         $author->setData('givenName', $firstName, $this->getLocale());
         if ($lastName) {
             $author->setData('familyName', $lastName, $this->getLocale());

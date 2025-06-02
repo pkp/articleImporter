@@ -21,13 +21,15 @@ trait SubmissionParser
 {
     /** @var Submission Submission instance */
     private ?Submission $_submission = null;
+    /** @var bool True if the submission was created by this instance */
+    private bool $_isSubmissionOwner;
 
     /**
      * Rollbacks the operation
      */
     private function _rollbackSubmission(): void
     {
-        if ($this->_submission) {
+        if ($this->_isSubmissionOwner && $this->_submission) {
             Repo::submission()->delete($this->_submission);
         }
     }
@@ -52,10 +54,20 @@ trait SubmissionParser
 
         // Creates the submission
         $this->_submission = Repo::submission()->dao->insert($article);
+        $this->_isSubmissionOwner = true;
 
         $this->_assignEditor();
 
         return $this->_submission;
+    }
+
+    /**
+     * Sets the submission
+     */
+    public function setSubmission(Submission $submission): void
+    {
+        $this->_submission = $submission;
+        $this->_isSubmissionOwner = false;
     }
 
     /**

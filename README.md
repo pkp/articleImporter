@@ -19,27 +19,28 @@ You will need to review your metadata XML files and ensure that all required dat
 - volume/issue
 
 Import files will need to be placed in a directory on your OJS server, using the following path convention:
-- `xml/vol#/iss#/#`
+- `xml/volume#/issue#/article#/version#`
 
-where:
-- `xml` is the parent folder for all the exported articles,
-- `vol#` is the volume number folder that contains all issues for the volume
-- `iss#` is the issue number folder that contains all articles for the issue
-- `#` is the article # folder that contains the article metadata.xml and fulltext.pdf files
+Where:
+- `xml` is the parent folder for all the exported articles
+- `volume#` is the volume number folder that contains all issues for the volume
+- `issue#` is the issue number folder that contains all articles for the issue
+- `article#` is the article # folder that contains the  article metadata.xml and fulltext.pdf files
+- `version#` is the version # folder that contains the article metadata.xml and fulltext.pdf files
 
 All `#` designations will be treated as numeric values; e.g. 'no.01-02' will be interpreted as "1".
 
-The article folder must have only one XML file, with the extension of `.xml` or `.meta`, and only one fulltext PDF file, with the extension of `.pdf`.
+The article folder must have only one XML file, with the `.xml` extension, and only one fulltext PDF file, with the `.pdf` extension.
 
-A file named cover.tiff, cover.tif, cover.jpeg, cover.jpg, or cover.png may be placed in the `iss#` folder, and will become the issue cover image, if present.
+A file named cover.tiff, cover.tif, cover.jpeg, cover.jpg or cover.png may be placed in the `issue#` folder, and will become the issue cover image if present.
 
-If importing JATS, the original metadata XML will be added as a production ready file.  Dependent files as named in the XML (via `asset` or `graphic` elements) will be appended, if the files are found in the article folder.
+When importing JATS, the original metadata XML will be added as a production ready file, and dependent files extracted from the JATS (via `asset` or `graphic` elements) will be appended to the submission if the files exist in the folder.
 
 Example structure:
 ```tree-view
 xml/
- ├── vol1/
- │    ├── i1/
+ ├── volume1/
+ │    ├── issue1/
  │    │   ├── cover.tif
  │    │   ├── 1/
  │    │   │   ├── metadata.xml
@@ -55,7 +56,7 @@ xml/
  │    │           ├── graph1.jpg
  │    │           ├── graph2.jpg
  │    │           └── graph3.jpg
- │    ├── i2/
+ │    ├── issue2/
  │    │   ├── 10/
  │    │   │   ├── 10.meta
  │    │   │   └── 10.pdf
@@ -63,8 +64,8 @@ xml/
  │    │       ├── metadata.xml
  │    │       └── fulltext.pdf
  │    └── ...
- └── vol2/
-      ├── i1/
+ └── volume2/
+      ├── issue1/
       │   ├── cover.jpg
       │   ├── 1/
       │   │   ├── metadata.xml

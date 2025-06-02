@@ -15,7 +15,6 @@ namespace APP\plugins\importexport\articleImporter;
 use APP\journal\JournalDAO;
 use APP\plugins\importexport\articleImporter\exceptions\ArticleSkippedException;
 
-use Exception;
 use PKP\core\Registry;
 use PKP\db\DAORegistry;
 use PKP\plugins\Hook;
@@ -24,6 +23,7 @@ use APP\core\PageRouter;
 use PKP\plugins\PluginRegistry;
 use PKP\plugins\ImportExportPlugin;
 use APP\facades\Repo;
+use Throwable;
 
 class ArticleImporterPlugin extends ImportExportPlugin
 {
@@ -97,7 +97,7 @@ class ArticleImporterPlugin extends ImportExportPlugin
                 } catch (ArticleSkippedException $e) {
                     $this->_writeLine(__('plugins.importexport.articleImporter.articleSkipped', ['article' => $article, 'message' => $e->getMessage()]));
                     ++$skipped;
-                } catch (Exception $e) {
+                } catch (Throwable $e) {
                     $this->_writeLine(__('plugins.importexport.articleImporter.articleSkipped', ['article' => $article, 'message' => $e->getMessage()]));
                     ++$failed;
                 }
@@ -109,7 +109,7 @@ class ArticleImporterPlugin extends ImportExportPlugin
             }
 
             $this->_writeLine(__('plugins.importexport.articleImporter.importEnd'));
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             $this->_writeLine(__('plugins.importexport.articleImporter.importError', ['message' => $e->getMessage()]));
         }
         $this->_writeLine(__('plugins.importexport.articleImporter.importStatus', ['count' => $count, 'imported' => $imported, 'failed' => $failed, 'skipped' => $skipped]));

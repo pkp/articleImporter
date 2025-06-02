@@ -50,7 +50,9 @@ class Configuration
     /** @var string base filename for issue covers */
     private string $_coverFilename;
     /** @var bool use category as section */
-    private $_canUseCategoryAsSection = true;
+    private bool $_canUseCategoryAsSection = true;
+    /** @var bool Generate HTML from JATS files */
+    private bool $_generateHtml = true;
 
     /**
      * Constructor

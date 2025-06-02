@@ -17,10 +17,11 @@ use APP\publication\Publication;
 use APP\facades\Repo;
 use DOMElement;
 use DOMNode;
+
 trait AuthorParser
 {
     /** @var int Keeps the count of inserted authors */
-    private $_authorCount = 0;
+    private int $_authorCount = 0;
 
     /**
      * Processes all the authors
@@ -53,6 +54,7 @@ trait AuthorParser
             $firstName = $this->getConfiguration()->getContext()->getName($this->getLocale());
         }
         $email = $this->selectText('email', $authorNode);
+        $orcid = $this->selectText("uri[@content-type='orcid']", $authorNode);
         $affiliations = [];
         $biography = null;
 
@@ -87,13 +89,28 @@ trait AuthorParser
             }
         }
 
+        foreach ($this->select('sup', $authorNode) as $node) {
+            $affiliation = '';
+            foreach ($this->select("../aff/label[.='{$node->textContent}']/following-sibling::node()", $authorNode) as $node) {
+                $affiliation .= $node->textContent;
+            }
+            if ($affiliation = preg_replace(['/\r\n|\n\r|\r|\n/', '/\s{2,}/', '/\s+([,.])/'], [' ', ' ', '$1'], trim($affiliation))) {
+                $affiliations[] = $affiliation;
+            }
+        }
+
         $email = $email ?: $this->getConfiguration()->getEmail();
 
-        $author = Repo::author()->dao->newDataObject();
+        $author = Repo::author()->newDataObject();
         $author->setData('givenName', $firstName, $this->getLocale());
         if ($lastName) {
             $author->setData('familyName', $lastName, $this->getLocale());
         }
+
+        if ($orcid) {
+            $author->setData('email', $orcid);
+        }
+
         $author->setData('email', $email);
         $author->setData('affiliation', implode('; ', $affiliations), $this->getLocale());
         $author->setData('biography', $biography, $this->getLocale());
