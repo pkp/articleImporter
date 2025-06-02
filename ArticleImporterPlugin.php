@@ -28,7 +28,6 @@ use APP\facades\Repo;
 
 class ArticleImporterPlugin extends ImportExportPlugin
 {
-    public const DATETIME_FORMAT = 'Y-m-d H:i:s';
 
     /**
      * @copydoc ImportExportPlugin::getDescription()
@@ -63,9 +62,7 @@ class ArticleImporterPlugin extends ImportExportPlugin
 
             $this->_writeLine(__('plugins.importexport.articleImporter.importStart'));
 
-            // FIXME: This attaches the associated user to the request and is a workaround for no users being present
-            //     when running CLI tools. This assumes that given the username supplied should be used as the
-            //  authenticated user. To revisit later.
+            // FIXME: This attaches the associated user to the request and is a workaround for no users being present when running CLI tools.
             $user = $configuration->getUser();
             Registry::set('user', $user);
 
@@ -88,9 +85,10 @@ class ArticleImporterPlugin extends ImportExportPlugin
 
             // Iterates through all the found article entries, already sorted by ascending volume > issue > article
             $iterator = $configuration->getArticleIterator();
-            $count = count($iterator);
-			/** @var ArticleEntry */
+            $count = 0;
+            /** @var ArticleEntry */
             foreach ($iterator as $entry) {
+                ++$count;
                 $article = implode('-', [$entry->getVolume(), $entry->getIssue(), $entry->getArticle()]);
                 try {
                     // Process the article

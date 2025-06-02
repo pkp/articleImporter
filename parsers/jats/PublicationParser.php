@@ -14,9 +14,10 @@ namespace APP\plugins\importexport\articleImporter\parsers\jats;
 
 use APP\plugins\importexport\articleImporter\ArticleImporterPlugin;
 use APP\submission\Submission;
-use DateTime;
 use DateTimeImmutable;
 use DOMDocument;
+use DOMElement;
+use DOMXPath;
 use Exception;
 use FilesystemIterator;
 use PKP\file\TemporaryFileDAO;
@@ -46,112 +47,113 @@ trait PublicationParser
     public function getPublication(): Publication
     {
         $publicationDate = $this->getPublicationDate() ?: $this->getIssuePublicationDate();
-        $latestPublication = null;
+        $version = $this->getArticleVersion()->getVersion();
 
-        // Create a publication for each version
-        foreach ($this->getArticleEntry()->getVersions() as $version) {
-            // Create the publication
-            $publication = Repo::publication()->dao->newDataObject();
-            $publication->setData('submissionId', $this->getSubmission()->getId());
-            $publication->setData('status', STATUS_PUBLISHED);
-            $publication->setData('version', (int)$version);
-            $publication->setData('seq', $this->getSubmission()->getId());
-            $publication->setData('accessStatus', ARTICLE_ACCESS_OPEN);
-            $publication->setData('datePublished', $publicationDate->format(ArticleImporterPlugin::DATETIME_FORMAT));
-            $publication->setData('sectionId', $this->getSection()->getId());
-            $publication->setData('issueId', $this->getIssue()->getId());
-            $publication->setData('urlPath', null);
+        // Create the publication
+        /** @var PublicationDAO */
+        $publicationDao = DAORegistry::getDAO('PublicationDAO');
+        /** @var Publication */
+        $publication = $publicationDao->newDataObject();
+        $publication->setData('submissionId', $this->getSubmission()->getId());
+        $publication->setData('status', STATUS_PUBLISHED);
+        $publication->setData('version', (int) $version);
+        $publication->setData('seq', $this->getSubmission()->getId());
+        $publication->setData('accessStatus', ARTICLE_ACCESS_OPEN);
+        $publication->setData('datePublished', $publicationDate->format(static::DATETIME_FORMAT));
+        $publication->setData('sectionId', $this->getSection()->getId());
+        $publication->setData('issueId', $this->getIssue()->getId());
+        $publication->setData('urlPath', null);
 
-            // Set article pages
-            $firstPage = $this->selectText('front/article-meta/fpage');
-            $lastPage = $this->selectText('front/article-meta/lpage');
-            if ($firstPage || $lastPage) {
-                $publication->setData('pages', "{$firstPage}" . ($lastPage ? "-{$lastPage}" : ''));
-            }
+        // Set article pages
+        $firstPage = $this->selectText('front/article-meta/fpage');
+        $lastPage = $this->selectText('front/article-meta/lpage');
+        if ($firstPage || $lastPage) {
+            $publication->setData('pages', "{$firstPage}" . ($lastPage ? "-{$lastPage}" : ''));
+        }
 
-            $hasTitle = false;
+        $hasTitle = false;
 
-            // Set title
-            if ($node = $this->selectFirst('front/article-meta/title-group/article-title')) {
-                $locale = $this->getLocale($node->getAttribute('xml:lang'));
-                $value = $this->selectText('.', $this->clearXref($node));
-                $hasTitle = strlen($value);
+        // Set title
+        if ($node = $this->selectFirst('front/article-meta/title-group/article-title')) {
+            $locale = $this->getLocale($node->getAttribute('xml:lang'));
+            $value = $this->selectText('.', $this->clearXref($node));
+            $hasTitle = strlen($value);
+            $publication->setData('title', $value, $locale);
+        }
+
+        // Set subtitle
+        if ($node = $this->selectFirst('front/article-meta/title-group/subtitle')) {
+            $publication->setData('subtitle', $this->selectText('.', $this->clearXref($node)), $this->getLocale($node->getAttribute('xml:lang')));
+        }
+
+        // Set localized title/subtitle
+        foreach ($this->select('front/article-meta/title-group/trans-title-group') as $node) {
+            $locale = $this->getLocale($node->getAttribute('xml:lang'));
+            if ($value = $this->selectText('trans-title', $this->clearXref($node))) {
+                $hasTitle = true;
                 $publication->setData('title', $value, $locale);
             }
-
-            // Set subtitle
-            if ($node = $this->selectFirst('front/article-meta/title-group/subtitle')) {
-                $publication->setData('subtitle', $this->selectText('.', $this->clearXref($node)), $this->getLocale($node->getAttribute('xml:lang')));
+            if ($value = $this->selectText('trans-subtitle', $this->clearXref($node))) {
+                $publication->setData('subtitle', $value, $locale);
             }
+        }
 
-            // Set localized title/subtitle
-            foreach ($this->select('front/article-meta/title-group/trans-title-group') as $node) {
-                $locale = $this->getLocale($node->getAttribute('xml:lang'));
-                if ($value = $this->selectText('trans-title', $this->clearXref($node))) {
-                    $hasTitle = true;
-                    $publication->setData('title', $value, $locale);
-                }
-                if ($value = $this->selectText('trans-subtitle', $this->clearXref($node))) {
-                    $publication->setData('subtitle', $value, $locale);
-                }
+        if (!$hasTitle) {
+            throw new Exception(__('plugins.importexport.articleImporter.articleTitleMissing'));
+        }
+        $publication->setData('language', LocaleConversion::getIso1FromLocale($this->getSubmission()->getData('locale')));
+
+
+        // Set abstract
+        foreach ($this->select('front/article-meta/abstract|front/article-meta/trans-abstract') as $node) {
+            $value = trim($this->getTextContent($node, function ($node, $content) {
+                // Transforms the known tags, the remaining ones will be stripped
+                $tag = [
+                    'title' => 'strong',
+                    'italic' => 'em',
+                    'sub' => 'sub',
+                    'sup' => 'sup',
+                    'p' => 'p'
+                ][$node->nodeName] ?? null;
+                return $tag ? "<{$tag}>{$content}</{$tag}>" : $content;
+            }));
+            if ($value) {
+                $publication->setData('abstract', $value, $this->getLocale($node->getAttribute('xml:lang')));
             }
-
-            if (!$hasTitle) {
-                throw new Exception(__('plugins.importexport.articleImporter.articleTitleMissing'));
-            }
-
-            $publication->setData('language', LocaleConversion::getIso1FromLocale($this->getSubmission()->getData('locale')));
-
-            // Set abstract
-            foreach ($this->select('front/article-meta/abstract|front/article-meta/trans-abstract') as $node) {
-                $value = trim($this->getTextContent($node, function ($node, $content) {
-                    // Transforms the known tags, the remaining ones will be stripped
-                    $tag = [
-                        'title' => 'strong',
-                        'italic' => 'em',
-                        'sub' => 'sub',
-                        'sup' => 'sup',
-                        'p' => 'p'
-                    ][$node->nodeName] ?? null;
-                    return $tag ? "<{$tag}>{$content}</{$tag}>" : $content;
-                }));
-                if ($value) {
-                    $publication->setData('abstract', $value, $this->getLocale($node->getAttribute('xml:lang')));
-                }
-            }
+        }
 
         // Set public IDs
         $pubIdPlugins = false;
         foreach ($this->getPublicIds() as $type => $value) {
-        if ($type === 'doi') {
-         $doiFound = Repo::doi()->getCollector()->filterByIdentifier($value)->getMany()->first();
-                 if ($doiFound) {
-                     $publication->setData('doiId', $doiFound->getId());
-                 } else {
-                     $newDoiObject = Repo::doi()->newDataObject([
-                         'doi' => $value,
-                         'contextId' => $this->getSubmission()->getData('contextId')
-                     ]);
-                     $doiId = Repo::doi()->add($newDoiObject);
-                     $publication->setData('doiId', $doiId);
-        }
+            if ($type === 'doi') {
+                $doiFound = Repo::doi()->getCollector()->filterByIdentifier($value)->getMany()->first();
+                if ($doiFound) {
+                    $publication->setData('doiId', $doiFound->getId());
+                } else {
+                    $newDoiObject = Repo::doi()->newDataObject([
+                        'doi' => $value,
+                        'contextId' => $this->getSubmission()->getData('contextId')
+                    ]);
+                    $doiId = Repo::doi()->add($newDoiObject);
+                    $publication->setData('doiId', $doiId);
+                }
             } else {
-        if ($type !== 'publisher-id' && !$pubIdPlugins) {
+                if ($type !== 'publisher-id' && !$pubIdPlugins) {
                     $pubIdPlugins = PluginRegistry::loadCategory('pubIds', true, $this->getContextId());
                 }
                 $publication->setData('pub-id::' . $type, $value);
-        }
+            }
         }
 
-            // Set copyright year and holder and license permissions
-            $publication->setData('copyrightHolder', $this->selectText('front/article-meta/permissions/copyright-holder'), $this->getLocale());
-            $publication->setData('copyrightNotice', $this->selectText('front/article-meta/permissions/copyright-statement'), $this->getLocale());
-            $publication->setData('copyrightYear', $this->selectText('front/article-meta/permissions/copyright-year') ?: $publicationDate->format('Y'));
-            $publication->setData('licenseUrl', $this->selectText('front/article-meta/permissions/license/attribute::xlink:href'));
+        // Set copyright year and holder and license permissions
+        $publication->setData('copyrightHolder', $this->selectText('front/article-meta/permissions/copyright-holder'), $this->getLocale());
+        $publication->setData('copyrightNotice', $this->selectText('front/article-meta/permissions/copyright-statement'), $this->getLocale());
+        $publication->setData('copyrightYear', $this->selectText('front/article-meta/permissions/copyright-year') ?: $publicationDate->format('Y'));
+        $publication->setData('licenseUrl', $this->selectText('front/article-meta/permissions/license/attribute::xlink:href'));
 
-            $publication = $this->_processCitations($publication);
-            $this->_setCoverImage($publication);
-            $this->_processCategories($publication);
+        $publication = $this->_processCitations($publication);
+        $this->setPublicationCoverImage($publication);
+        $this->_processCategories($publication);
 
         // Inserts the publication and updates the submission
     Repo::publication()->dao->insert($publication);
@@ -162,26 +164,25 @@ trait PublicationParser
             $this->_processKeywords($publication);
             $this->_processAuthors($publication);
 
-            // Process full text and generate HTML files
-            $this->_processFullText($publication, $version, true);
+        $this->_processKeywords($publication);
+        $this->_processAuthors($publication);
 
-            // Handle PDF galley
-            $this->_insertPDFGalley($publication, $version);
+        // Handle PDF galley
+        $this->_insertPDFGalley($publication);
 
-            // Record this XML itself
-            $this->_insertXMLSubmissionFile($publication, $version);
-            $this->_insertHTMLGalley($publication, $version);
-            $this->_insertSupplementaryGalleys($publication, $version);
+        // Store the JATS XML
+        $this->_insertXMLSubmissionFile($publication);
+        // Process full text and generate HTML files
+        $this->_processFullText(true);
+        $this->_insertHTMLGalley($publication);
+        $this->_insertSupplementaryGalleys($publication);
 
-            $publication = Repo::publication()->get($publication->getId());
+        $publication = Repo::publication()->get($publication->getId());
 
-            // Publishes the article
-            Repo::publication()->publish($publication);
+        // Publishes the article
+        Repo::publication()->publish($publication);
 
-            $latestPublication = $publication;
-        }
-
-        return $latestPublication;
+        return $publication;
     }
 
     /**
@@ -215,9 +216,9 @@ trait PublicationParser
     /**
      * Inserts the XML as a production ready file
      */
-    private function _insertXMLSubmissionFile(Publication $publication, string $version): void
+    private function _insertXMLSubmissionFile(Publication $publication): void
     {
-        $file = $this->getArticleEntry()->getMetadataFile($version);
+        $file = $this->getArticleVersion()->getMetadataFile();
         $filename = $file->getPathname();
 
         $genreId = Genre::GENRE_CATEGORY_DOCUMENT;
@@ -248,8 +249,8 @@ trait PublicationParser
         $submissionFileId = Repo::submissionFile()->add($newSubmissionFile);
 
         foreach ($this->select('//asset|//graphic') as $asset) {
-            $assetFilename = mb_strtolower($asset->getAttribute($asset->nodeName == 'path' ? 'href' : 'xlink:href'));
-            $dependentFilePath = dirname($filename) . DIRECTORY_SEPARATOR . $assetFilename;
+            $assetFilename = mb_strtolower($asset->getAttribute($asset->nodeName === 'path' ? 'href' : 'xlink:href'));
+            $dependentFilePath = dirname($filename) . "/{$assetFilename}";
             if (file_exists($dependentFilePath)) {
                 $this->_createDependentFile($submission, $userId, $submissionFileId, $dependentFilePath);
             }
@@ -293,9 +294,9 @@ trait PublicationParser
     /**
      * Inserts the PDF galley
      */
-    private function _insertPDFGalley(Publication $publication, string $version): void
+    private function _insertPDFGalley(Publication $publication): void
     {
-        $file = $this->getArticleEntry()->getSubmissionFile($version);
+        $file = $this->getArticleVersion()->getSubmissionFile();
         if (!$file) {
             return;
         }
@@ -339,10 +340,10 @@ trait PublicationParser
     /**
      * Inserts the supplementary galleys
      */
-    private function _insertSupplementaryGalleys(Publication $publication, string $version): void
+    private function _insertSupplementaryGalleys(Publication $publication): void
     {
-        $htmlFiles = count($this->getArticleEntry()->getHtmlFiles($version));
-        $files = $this->getArticleEntry()->getSupplementaryFiles($version);
+        $htmlFiles = count($this->getArticleVersion()->getHtmlFiles());
+        $files = $this->getArticleVersion()->getSupplementaryFiles();
         /** @var SplFileInfo */
         foreach ($files as $i => $file) {
             // Create a galley for the article
@@ -412,54 +413,13 @@ trait PublicationParser
         return $date;
     }
 
-    private function _setCoverImage(Publication $publication): void
-    {
-        $pfm = new TemporaryFileManager();
-        $filename = $this->getArticleEntry()->getSubmissionCoverFile();
-        if (!$filename) {
-            return;
-        }
-        // Get the file extension, then rename the file.
-        $fileExtension = $pfm->parseFileExtension($filename->getBasename());
-
-        if (!$pfm->fileExists($pfm->getBasePath(), 'dir')) {
-            // Try to create destination directory
-            $pfm->mkdirtree($pfm->getBasePath());
-        }
-
-        $newFileName = basename(tempnam($pfm->getBasePath(), $fileExtension));
-        if (!$newFileName) return;
-
-        $pfm->copyFile($filename, $pfm->getBasePath() . "/{$newFileName}");
-        /** @var TemporaryFileDAO */
-        $temporaryFileDao = DAORegistry::getDAO('TemporaryFileDAO');
-        /** @var TemporaryFile */
-        $temporaryFile = $temporaryFileDao->newDataObject();
-
-        $temporaryFile->setUserId(Application::get()->getRequest()->getUser()->getId());
-        $temporaryFile->setServerFileName($newFileName);
-        $temporaryFile->setFileType(PKPString::mime_content_type($pfm->getBasePath() . "/$newFileName", $fileExtension));
-        $temporaryFile->setFileSize($filename->getSize());
-        $temporaryFile->setOriginalFileName($pfm->truncateFileName($filename->getBasename(), 127));
-        $temporaryFile->setDateUploaded(Core::getCurrentDate());
-
-        $temporaryFileDao->insertObject($temporaryFile);
-
-        $publication->setData('coverImage', [
-            'dateUploaded' => (new DateTime())->format('Y-m-d H:i:s'),
-            'uploadName' => $temporaryFile->getOriginalFileName(),
-            'temporaryFileId' => $temporaryFile->getId(),
-            'altText' => 'Publication image'
-        ], $this->getLocale());
-    }
-
     /**
      * Inserts the HTML as a production ready file
      */
-    private function _insertHTMLGalley(Publication $publication, string $version): void
+    private function _insertHTMLGalley(Publication $publication): void
     {
         /** @var SplFileInfo */
-        foreach ($this->getArticleEntry()->getHtmlFiles($version) as $i => $file) {
+        foreach ($this->getArticleVersion()->getHtmlFiles() as $i => $file) {
             $pieces = explode('.', $file->getBasename(".{$file->getExtension()}"));
             $lang = end($pieces);
             // Create a galley of the article (i.e. a galley)
@@ -490,7 +450,7 @@ trait PublicationParser
                     if (strtolower(substr($extension, 0, 3)) === 'tif') {
                         $newFilename = basename($path, ".{$extension}") . '.jpg';
                         $content = str_replace($path, $newFilename, $content);
-                        if (!file_exists($realPath = $file->getPath() . '/graphic/' .  $newFilename)) {
+                        if (!file_exists($realPath = $file->getPath() . '/graphic/' . $newFilename)) {
                             throw new Exception("Convert {$realPath} from {$extension} to jpg");
                         }
                     } else if (!file_exists($realPath)) {
@@ -541,9 +501,6 @@ trait PublicationParser
             $galley->setData('submissionFileId', $submissionFileId);
             Repo::galley()->edit($galley, []);
         }
-
-        // Reload files to include the generated HTML files
-        $this->getArticleEntry()->reloadFiles($version);
     }
 
     /**
@@ -628,11 +585,16 @@ trait PublicationParser
     /**
      * Process the full text and generate HTML files
      */
-    private function _processFullText(Publication $publication, string $version, bool $overwrite = false): void
+    private function _processFullText(bool $overwrite = false): void
     {
         static $xslt;
 
-        if (!$this->selectFirst('/article/body') || (!$overwrite && count($this->getArticleEntry()->getHtmlFiles($version)))) {
+        $file = $this->getArticleVersion()->getSubmissionFile();
+        if (!$file) {
+            return;
+        }
+
+        if (!$this->selectFirst('/article/body') || (!$overwrite && count($this->getArticleVersion()->getHtmlFiles()))) {
             return;
         }
 
@@ -645,7 +607,7 @@ trait PublicationParser
             $xslt->importStyleSheet($document);
         }
 
-        $metadata = $this->getArticleEntry()->getMetadataFile($version);
+        $metadata = $this->getArticleVersion()->getMetadataFile();
         $xml = new DOMDocument('1.0', 'utf-8');
         $xml->load($metadata);
         $xpath = new DOMXPath($xml);
@@ -687,7 +649,7 @@ trait PublicationParser
                             break;
 
                         case 'aff':
-                            if ($affiliation = preg_replace(['/\r\n|\n\r|\r|\n/', '/\s{2,}/', '/\s+([,.])/'], [' ', ' ', '$1'], trim($this->selectText("../../aff[@id='{$id}']", $xref, $xpath)))) {
+                            if ($affiliation = trim($this->selectText("../../aff[@id='{$id}']", $xref, $xpath))) {
                                 $affiliations[] = $affiliation;
                             }
                             $xrefs[] = $xref;
@@ -698,7 +660,7 @@ trait PublicationParser
                     $node = $contribNode->ownerDocument->createElement('aff', implode('; ', $affiliations));
                     $contribNode->appendChild($node);
                 }
-                foreach($xrefs as $xref) {
+                foreach ($xrefs as $xref) {
                     $xref->parentNode->removeChild($xref);
                 }
             }
@@ -722,7 +684,8 @@ trait PublicationParser
 
             /** @var DOMElement */
             foreach (iterator_to_array($this->select('body//sec//label', null, $xpath)) as $label) {
-                for($title = $label; ($title = $title->nextSibling) && $title->nodeType !== XML_ELEMENT_NODE;);
+                for ($title = $label; ($title = $title->nextSibling) && $title->nodeType !== XML_ELEMENT_NODE; )
+                    ;
                 /** @var DOMElement $title */
                 if ($title && $title->tagName === 'title') {
                     $title->insertBefore($title->ownerDocument->createTextNode($label->textContent . ' '), $title->firstChild);
@@ -772,10 +735,9 @@ trait PublicationParser
             if ($output === false) {
                 throw new Exception("Failed to create HTML file from JATS XML: \n" . print_r(libxml_get_errors(), true));
             }
-            $path = $metadata->getPathInfo() . '/' . $metadata->getBasename($metadata->getExtension()) . (count($langs) > 1 ? "{$lang}." : '') . 'html';
+            $path = $metadata->getPathInfo() . '/' . $metadata->getBasename($metadata->getExtension()) . (count($langs) > 1 ? "-{$lang}." : '.') . 'html';
 
             file_put_contents($path, $output);
-            $this->getArticleEntry()->reloadFiles($version);
         }
     }
 }
