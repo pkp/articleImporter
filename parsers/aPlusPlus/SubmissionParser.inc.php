@@ -17,7 +17,6 @@ namespace PKP\Plugins\ImportExport\ArticleImporter\Parsers\APlusPlus;
 use Application;
 use DAORegistry;
 use DateInterval;
-use PKP\Plugins\ImportExport\ArticleImporter\ArticleImporterPlugin;
 use Services;
 use StageAssignmentDAO;
 use Submission;
@@ -58,7 +57,7 @@ trait SubmissionParser
         $article->setData('stageId', WORKFLOW_STAGE_ID_PRODUCTION);
         $article->setData('sectionId', $this->getSection()->getId());
         $date = $this->getDateFromNode($this->selectFirst('Journal/Volume/Issue/Article/ArticleInfo/ArticleHistory/RegistrationDate')) ?: $this->getPublicationDate()->add(new DateInterval('P1D'));
-        $article->setData('dateSubmitted', $date->format(ArticleImporterPlugin::DATETIME_FORMAT));
+        $article->setData('dateSubmitted', $date->format(static::DATETIME_FORMAT));
 
         // Creates the submission
         $this->_submission = Services::get('submission')->add($article, Application::get()->getRequest());

@@ -85,7 +85,7 @@ class Parser extends BaseParser
     /**
      * Convert JATS tags to HTML
      */
-    public function fixJatsTags(DOMElement $node): DOMElement
+    public static function fixJatsTags(DOMElement $node): DOMElement
     {
         $replace = function (string $tagName, string $newTagName, callable $configure = null) use ($node): void {
             /** @var DOMElement */

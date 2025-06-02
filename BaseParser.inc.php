@@ -17,39 +17,44 @@ namespace PKP\Plugins\ImportExport\ArticleImporter;
 use Application;
 use Author;
 use AuthorDAO;
+use Core;
 use DAORegistry;
+use DateTimeImmutable;
 use DOMDocument;
 use DOMDocumentType;
-use DOMElement;
 use DOMNode;
 use DOMNodeList;
 use DOMXPath;
 use Exception;
 use GenreDAO;
+use GlobIterator;
 use Issue;
 use IssueDAO;
 use PKP\Plugins\ImportExport\ArticleImporter\Exceptions\AlreadyExistsException;
 use PKP\Plugins\ImportExport\ArticleImporter\Exceptions\InvalidDocTypeException;
 use PKPLocale;
+use PKPString;
 use Publication;
 use PublicFileManager;
 use Section;
 use Submission;
 use SubmissionDAO;
-use XSLTProcessor;
+use TemporaryFile;
+use TemporaryFileDAO;
+use TemporaryFileManager;
 
 abstract class BaseParser
 {
+    public const DATETIME_FORMAT = 'Y-m-d H:i:s';
+
     /** @var Configuration Configuration */
     private $_configuration;
-    /** @var ArticleEntry Article entry */
-    protected ArticleEntry $_entry;
-    /**
-     * The XML document
-     */
-    protected ?DOMDocument $_document = null;
+    /** @var ArticleVersion Article version */
+    protected $_version;
+    /** @var ?DOMDocument The XML document */
+    protected $_document = null;
     /** @var DOMXPath The DOMXPath instance for the XML metadata */
-    protected ?DOMXPath $_xpath = null;
+    protected $_xpath = null;
     /** @var int Context ID */
     private $_contextId;
     /** @var string Default locale, grabbed from the submission or the context's primary locale */
@@ -62,10 +67,10 @@ abstract class BaseParser
     /**
      * Constructor
      */
-    public function __construct(Configuration $configuration, ArticleEntry $entry)
+    public function __construct(Configuration $configuration, ArticleVersion $version)
     {
         $this->_configuration = $configuration;
-        $this->_entry = $entry;
+        $this->_version = $version;
         $context = $this->_configuration->getContext();
         $this->_contextId = $context->getId();
         $this->_locale = $context->getPrimaryLocale();
@@ -115,7 +120,7 @@ abstract class BaseParser
      *
      * @throws Exception Throws when something goes wrong, and an attempt to revert the actions will be performed
      */
-    protected function execute(): void
+    public function execute(): void
     {
         try {
             $this
@@ -135,32 +140,26 @@ abstract class BaseParser
      */
     protected function _ensureMetadataIsValidAndParse(): static
     {
-        // Tries to parse the XML for each version
-        foreach ($this->getArticleEntry()->getVersions() as $version) {
-            $document = new DOMDocument('1.0', 'utf-8');
-            if (!$document->load($this->getArticleEntry()->getMetadataFile($version)->getPathname())) {
-                throw new Exception(__('plugins.importexport.jats.failedToParseXMLDocument'));
-            }
-
-            // Checks whether the loaded document is supported by the parser (the doctype should match)
-            $docType = $document->doctype;
-            $supportedDocTypes = $this->getDocType();
-            $found = false;
-            foreach ($supportedDocTypes as $supportedDocType) {
-                if ([$docType->systemId, $docType->publicId, $docType->name] == [$supportedDocType->systemId, $supportedDocType->publicId, $supportedDocType->name]) {
-                    $found = true;
-                    break;
-                }
-            }
-            if (!$found) {
-                throw new InvalidDocTypeException(__('plugins.importexport.articleImporter.invalidDoctype'));
-            }
+        $document = new DOMDocument('1.0', 'utf-8');
+        if (!$document->load($this->_version->getMetadataFile()->getPathname())) {
+            throw new Exception(__('plugins.importexport.jats.failedToParseXMLDocument'));
         }
 
-        // Use the first version for the main document
-        $version = $this->getArticleEntry()->getVersions()[0];
-        $this->_document = new DOMDocument('1.0', 'utf-8');
-        $this->_document->load($this->getArticleEntry()->getMetadataFile($version)->getPathname());
+        // Checks whether the loaded document is supported by the parser (the doctype should match)
+        $docType = $document->doctype;
+        $supportedDocTypes = $this->getDocType();
+        $found = false;
+        foreach ($supportedDocTypes as $supportedDocType) {
+            if ([$docType->systemId, $docType->publicId, $docType->name] == [$supportedDocType->systemId, $supportedDocType->publicId, $supportedDocType->name]) {
+                $found = true;
+                break;
+            }
+        }
+        if (!$found) {
+            throw new InvalidDocTypeException(__('plugins.importexport.articleImporter.invalidDoctype'));
+        }
+
+        $this->_document = $document;
         $this->_xpath = new DOMXPath($this->_document);
         $this->_xpath->registerNamespace('xlink', 'http://www.w3.org/1999/xlink');
         $this->_locale = $this->getLocale($this->selectText('@xml:lang'));
@@ -176,7 +175,6 @@ abstract class BaseParser
     {
         /** @var SubmissionDAO */
         $submissionDao = DAORegistry::getDAO('SubmissionDAO');
-        $version = $this->getArticleEntry()->getVersions()[0];
         foreach ($this->getPublicIds() as $type => $id) {
             if ($submissionDao->getByPubId($type, $id, $this->getContextId())) {
                 throw new AlreadyExistsException(__('plugins.importexport.articleImporter.alreadyExists', ['type' => $type, 'id' => $id]));
@@ -268,11 +266,19 @@ abstract class BaseParser
     }
 
     /**
-     * Retrieves the article entry instance
+     * Gets the article version
+     */
+    public function getArticleVersion(): ArticleVersion
+    {
+        return $this->_version;
+    }
+
+    /**
+     * Gets the article entry
      */
     public function getArticleEntry(): ArticleEntry
     {
-        return $this->_entry;
+        return $this->_version->getArticleEntry();
     }
 
     /**
@@ -313,34 +319,6 @@ abstract class BaseParser
         }
         return $callback($node, $data);
     }
-
-    /**
-     * Looks in $issueFolder for a cover image, and applies it to $issue if found
-     */
-    public function setIssueCover(string $issueFolder, Issue $issue)
-    {
-        /** @var IssueDAO */
-        $issueDao = DAORegistry::getDAO('IssueDAO');
-        $issueCover = null;
-        foreach ($this->getConfiguration()->getImageExtensions() as $ext) {
-            $checkFile = $issueFolder . DIRECTORY_SEPARATOR . $this->getConfiguration()->getIssueCoverFilename() . '.' . $ext;
-            if (file_exists($checkFile)) {
-                $issueCover = $checkFile;
-                break;
-            }
-        }
-        if ($issueCover) {
-            import('classes.file.PublicFileManager');
-            $publicFileManager = new PublicFileManager();
-            $fileparts = explode('.', $issueCover);
-            $ext = array_pop($fileparts);
-            $newFileName = 'cover_issue_' . $issue->getId() . '_' . $this->getLocale() . '.' . $ext;
-            $publicFileManager->copyContextFile($this->getContextId(), $issueCover, $newFileName);
-            $issue->setCoverImage($newFileName, $this->getLocale());
-            $issueDao->updateObject($issue);
-        }
-    }
-
 
     /**
      * Find a Genre ID for a context and extension
@@ -388,5 +366,79 @@ abstract class BaseParser
 
         $authorDao->insertObject($author);
         return $author;
+    }
+
+    /**
+     * Looks for a cover image in the issue folder and assigns it to the given issue
+     */
+    public function setIssueCoverImage(Issue $issue)
+    {
+        $issueCover = null;
+        $issueFolder = (string) $this->getArticleVersion()->getPath();
+        foreach (new GlobIterator("{$issueFolder}/../../" . $this->getConfiguration()->getCoverFilename() . '.*') as $file) {
+            if (in_array(strtolower($file->getExtension()), $this->getConfiguration()->getImageExtensions())) {
+                $issueCover = $file;
+                break;
+            }
+        }
+
+        if (!$issueCover) {
+            return;
+        }
+
+        import('classes.file.PublicFileManager');
+        $publicFileManager = new PublicFileManager();
+        $newFileName = 'cover_issue_' . $issue->getId() . '_' . $this->getLocale() . '.' . $issueCover->getExtension();
+        $publicFileManager->copyContextFile($this->getContextId(), $issueCover, $newFileName);
+        $issue->setCoverImage($newFileName, $this->getLocale());
+        /** @var IssueDAO */
+        $issueDao = DAORegistry::getDAO('IssueDAO');
+        $issueDao->updateObject($issue);
+    }
+
+    /**
+     * Sets the publication cover
+     */
+    public function setPublicationCoverImage(Publication $publication): void
+    {
+        import('lib.pkp.classes.file.TemporaryFileManager');
+        $fileManager = new TemporaryFileManager();
+        $filename = $this->getArticleVersion()->getSubmissionCoverFile();
+        if (!$filename) {
+            return;
+        }
+
+        // Get the file extension, then rename the file.
+        $fileExtension = $fileManager->parseFileExtension($filename->getBasename());
+
+		// Try to create destination directory
+		$fileManager->mkdirtree($fileManager->getBasePath());
+
+        $newFileName = basename(tempnam($fileManager->getBasePath(), $fileExtension));
+        if (!$newFileName) {
+			return;
+		}
+
+        $fileManager->copyFile($filename, $fileManager->getBasePath() . "/{$newFileName}");
+        /** @var TemporaryFileDAO */
+        $temporaryFileDao = DAORegistry::getDAO('TemporaryFileDAO');
+        /** @var TemporaryFile */
+        $temporaryFile = $temporaryFileDao->newDataObject();
+
+        $temporaryFile->setUserId(Application::get()->getRequest()->getUser()->getId());
+        $temporaryFile->setServerFileName($newFileName);
+        $temporaryFile->setFileType(PKPString::mime_content_type($fileManager->getBasePath() . "/$newFileName", $fileExtension));
+        $temporaryFile->setFileSize($filename->getSize());
+        $temporaryFile->setOriginalFileName($fileManager->truncateFileName($filename->getBasename(), 127));
+        $temporaryFile->setDateUploaded(Core::getCurrentDate());
+
+        $temporaryFileDao->insertObject($temporaryFile);
+
+        $publication->setData('coverImage', [
+            'dateUploaded' => (new DateTimeImmutable())->format(static::DATETIME_FORMAT),
+            'uploadName' => $temporaryFile->getOriginalFileName(),
+            'temporaryFileId' => $temporaryFile->getId(),
+            'altText' => 'Publication image'
+        ], $this->getLocale());
     }
 }

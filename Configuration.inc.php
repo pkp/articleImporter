@@ -50,7 +50,7 @@ class Configuration
     /** @var string[] File extensions recognized as images */
     private $_imageExt;
     /** @var string base filename for issue covers */
-    private $_issueCoverFilename;
+    private $_coverFilename;
     /** @var bool use category as section */
     private $_canUseCategoryAsSection = true;
 
@@ -116,7 +116,7 @@ class Configuration
         $this->_genre = $genreDao->getByKey('SUBMISSION', $this->_context->getId());
 
         $this->_imageExt = ['tif', 'tiff', 'png', 'jpg', 'jpeg'];
-        $this->_issueCoverFilename = 'cover';
+        $this->_coverFilename = 'cover';
     }
 
     /**
@@ -226,9 +226,9 @@ class Configuration
     /**
      * Retrieves the base name for an issue cover file
      */
-    public function getIssueCoverFilename(): string
+    public function getCoverFilename(): string
     {
-        return $this->_issueCoverFilename;
+        return $this->_coverFilename;
     }
 
     /**

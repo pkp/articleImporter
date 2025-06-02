@@ -17,7 +17,6 @@ namespace PKP\Plugins\ImportExport\ArticleImporter\Parsers\Jats;
 use Application;
 use DAORegistry;
 use DateInterval;
-use PKP\Plugins\ImportExport\ArticleImporter\ArticleImporterPlugin;
 use Services;
 use StageAssignmentDAO;
 use Submission;
@@ -60,7 +59,7 @@ trait SubmissionParser
         $article->setData('locale', $this->getLocale());
 
         $date = $this->getDateFromNode($this->selectFirst("front/article-meta/history/date[@date-type='received']")) ?: $this->getPublicationDate()->add(new DateInterval('P1D'));
-        $article->setData('dateSubmitted', $date->format(ArticleImporterPlugin::DATETIME_FORMAT));
+        $article->setData('dateSubmitted', $date->format(static::DATETIME_FORMAT));
 
         // Creates the submission
         $this->_submission = Services::get('submission')->add($article, Application::get()->getRequest());

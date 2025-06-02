@@ -20,7 +20,6 @@ use DOMDocument;
 use DOMXPath;
 use Issue;
 use IssueDAO;
-use PKP\Plugins\ImportExport\ArticleImporter\ArticleImporterPlugin;
 use Services;
 
 trait IssueParser
@@ -56,7 +55,7 @@ trait IssueParser
         }
 
         $document = new DOMDocument('1.0', 'utf-8');
-        $path = $this->getArticleEntry()->getMetadataFile()->getPathInfo()->getPathInfo();
+        $path = $this->getArticleVersion()->getMetadataFile()->getPathInfo()->getPathInfo();
         $issueMetaPath = $path . '/' . $path->getBasename() . '/' . $path->getBasename() . '.xml';
         if (file_exists($issueMetaPath)) {
             return $this->_issueMeta = [
@@ -124,7 +123,7 @@ trait IssueParser
             $issue->setData('year', (int) $publicationDate->format('Y'));
             $issue->setData('published', true);
             $issue->setData('current', false);
-            $issue->setData('datePublished', $publicationDate->format(ArticleImporterPlugin::DATETIME_FORMAT));
+            $issue->setData('datePublished', $publicationDate->format(static::DATETIME_FORMAT));
             $issue->setData('accessStatus', ISSUE_ACCESS_OPEN);
             $issue->setData('showVolume', true);
             $issue->setData('showNumber', true);
@@ -133,11 +132,9 @@ trait IssueParser
             $issue->stampModified();
             $issueDao->insertObject($issue);
 
-            $issueFolder = (string)$entry->getSubmissionFile()->getPathInfo();
-            $this->setIssueCover($issueFolder, $issue);
+			$this->setIssueCover($issue);
 
             $this->_isIssueOwner = true;
-
             $this->_issue = $issue;
         }
 
