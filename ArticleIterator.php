@@ -13,37 +13,27 @@
 namespace APP\plugins\importexport\articleImporter;
 
 use Generator;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
+use SplFileInfo;
 
 class ArticleIterator implements \IteratorAggregate
 {
-    private const REQUIRED_DEPTH = 4; // volume/issue/article/version
     /** @var string The path */
-    private $path;
+    private string $path;
 
     public function __construct(string $path)
     {
         $this->path = $path;
     }
 
-	/**
-	 * Retrieves the iterator
-	 * @return iterable<ArticleEntry>
-	 */
+    /**
+     * Retrieves the iterator
+     * @return iterable<ArticleEntry>
+     */
     public function getIterator(): Generator
     {
-        $directoryIterator = new RecursiveDirectoryIterator($this->path);
-        $recursiveIterator = new RecursiveIteratorIterator(
-            $directoryIterator,
-            RecursiveIteratorIterator::SELF_FIRST
-        );
-        $recursiveIterator->setMaxDepth(self::REQUIRED_DEPTH);
-
-        foreach ($recursiveIterator as $fileInfo) {
-            if (!$fileInfo->isDot() && $fileInfo->isDir() && $recursiveIterator->getDepth() === static::REQUIRED_DEPTH) {
-                yield new ArticleEntry($fileInfo);
-            }
+        // volume/issue/article
+        foreach (glob("{$this->path}/*/*/*", GLOB_ONLYDIR) as $path) {
+            yield new ArticleEntry(new SplFileInfo($path));
         }
     }
 }

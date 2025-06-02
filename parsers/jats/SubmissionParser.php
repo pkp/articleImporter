@@ -12,7 +12,6 @@
 
 namespace APP\plugins\importexport\articleImporter\parsers\jats;
 
-use APP\plugins\importexport\articleImporter\ArticleImporterPlugin;
 use DateInterval;
 use APP\submission\Submission;
 use PKP\db\DAORegistry;
@@ -23,13 +22,15 @@ trait SubmissionParser
 {
     /** @var Submission Submission instance */
     private ?Submission $_submission = null;
+    /** @var bool True if the submission was created by this instance */
+    private bool $_isSubmissionOwner;
 
     /**
      * Rollbacks the operation
      */
     private function _rollbackSubmission(): void
     {
-        if ($this->_submission) {
+        if ($this->_isSubmissionOwner && $this->_submission) {
             Repo::submission()->delete($this->_submission);
         }
     }
@@ -43,7 +44,7 @@ trait SubmissionParser
             return $this->_submission;
         }
 
-        $article = Repo::submission()->dao->newDataObject();
+        $article = Repo::submission()->newDataObject();
         $article->setData('contextId', $this->getContextId());
         $article->setData('status', Submission::STATUS_PUBLISHED);
         $article->setData('submissionProgress', '');
@@ -57,10 +58,20 @@ trait SubmissionParser
         // Creates the submission
         Repo::submission()->dao->insert($article);
         $this->_submission = $article;
+        $this->_isSubmissionOwner = true;
 
         $this->_assignEditor();
 
         return $this->_submission;
+    }
+
+    /**
+     * Sets the submission
+     */
+    public function setSubmission(Submission $submission): void
+    {
+        $this->_submission = $submission;
+        $this->_isSubmissionOwner = false;
     }
 
     /**

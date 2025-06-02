@@ -12,8 +12,6 @@
 
 namespace APP\plugins\importexport\articleImporter\parsers\aPlusPlus;
 
-use APP\plugins\importexport\articleImporter\ArticleImporterPlugin;
-
 use DateTimeImmutable;
 use Exception;
 use PKP\core\Core;
@@ -40,11 +38,11 @@ trait PublicationParser
         $version = $this->getArticleVersion()->getVersion();
 
         // Create the publication
-        $publication = Repo::publication()->dao->newDataObject();
+        $publication = Repo::publication()->newDataObject();
         $publication->setData('submissionId', $this->getSubmission()->getId());
         $publication->setData('status', Submission::STATUS_PUBLISHED);
         $publication->setData('version', $version);
-        $publication->setData('seq', $this->getSubmission()->getId());
+        $publication->setData('seq', $version);
         $publication->setData('accessStatus', $this->_getAccessStatus());
         $publication->setData('datePublished', $publicationDate->format(static::DATETIME_FORMAT));
         $publication->setData('sectionId', $this->getSection()->getId());
@@ -110,7 +108,7 @@ trait PublicationParser
         }
 
         // Set public IDs
-        $pubIdPlugins = false;
+        $pubIdPlugins = null;
         foreach ($this->getPublicIds() as $type => $value) {
             if ($type === 'doi') {
                 $doiFound = Repo::doi()->getCollector()->filterByIdentifier($value)->getMany()->first();
@@ -137,22 +135,22 @@ trait PublicationParser
         $publication->setData('copyrightNotice', null);
         $publication->setData('copyrightYear', $this->selectText('Journal/Volume/Issue/Article/ArticleInfo/ArticleCopyright/CopyrightYear') ?: $publicationDate->format('Y'));
         $publication->setData('licenseUrl', null);
-
         $this->setPublicationCoverImage($publication);
+
         // Inserts the publication and updates the submission's publication ID
         Repo::publication()->dao->insert($publication);
-        $submission = $this->getSubmission();
-        $submission->setData('currentPublicationId', $publication->getId());
-        Repo::submission()->edit($submission, []);
 
         $this->_processKeywords($publication);
+        // Reload object with keywords (otherwise they will be cleared later on)
+        $publication = Repo::publication()->get($publication->getId());
         $this->_processAuthors($publication);
+        $publication = Repo::publication()->edit($publication, []);
 
         // Handle PDF galley
         $this->_insertPDFGalley($publication);
 
         // Publishes the article
-        Services::get('publication')->publish($publication);
+        Repo::publication()->publish($publication);
 
         return $publication;
     }
@@ -180,7 +178,7 @@ trait PublicationParser
         $filename = $file->getFilename();
 
         // Create a galley for the article
-        $galley = Repo::galley()->dao->newDataObject();
+        $galley = Repo::galley()->newDataObject();
         $galley->setData('publicationId', $publication->getId());
         $galley->setData('name', $filename, $this->getLocale());
         $galley->setData('seq', 1);
@@ -199,7 +197,7 @@ trait PublicationParser
             $submissionDir . '/' . uniqid() . '.pdf'
         );
 
-        $newSubmissionFile = Repo::submissionFile()->dao->newDataObject();
+        $newSubmissionFile = Repo::submissionFile()->newDataObject();
         $newSubmissionFile->setData('submissionId', $submission->getId());
         $newSubmissionFile->setData('fileId', $newFileId);
         $newSubmissionFile->setData('genreId', $this->getConfiguration()->getSubmissionGenre()->getId());
@@ -224,7 +222,8 @@ trait PublicationParser
      */
     public function getPublicIds(): array
     {
-        $ids = [];
+        $articleEntry = $this->getArticleEntry();
+        $ids = ['publisher-id' => "{$articleEntry->getVolume()}.{$articleEntry->getIssue()}.{$articleEntry->getArticle()}.{$this->getArticleVersion()->getVersion()}"];
         if ($value = $this->selectText('Journal/Volume/Issue/Article/@ID')) {
             $ids['publisher-id'] = $value;
         }

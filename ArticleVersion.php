@@ -1,6 +1,6 @@
 <?php
 /**
- * @file ArticleVersion.inc.php
+ * @file ArticleVersion.php
  *
  * Copyright (c) 2020 Simon Fraser University
  * Copyright (c) 2020 John Willinsky
@@ -12,22 +12,21 @@
  * @brief Represents a specific version of an article with its associated files
  */
 
-namespace PKP\Plugins\ImportExport\ArticleImporter;
+namespace APP\plugins\importexport\articleImporter;
 
+use APP\plugins\importexport\articleImporter\exceptions\InvalidDocTypeException;
+use APP\plugins\importexport\articleImporter\exceptions\NoSuitableParserException;
 use Exception;
 use FilesystemIterator;
-use PKP\Plugins\ImportExport\ArticleImporter\Exceptions\InvalidDocTypeException;
-use PKP\Plugins\ImportExport\ArticleImporter\Exceptions\NoSuitableParserException;
 use SplFileInfo;
+use Submission;
 
 class ArticleVersion
 {
-    /** @var array List of files for this version */
-    private $_files = [];
     /** @var ArticleEntry The parent article entry */
-    private $_articleEntry;
+    private ArticleEntry $_articleEntry;
     /** @var SplFileInfo The version directory */
-    private $_directory;
+    private SplFileInfo $_directory;
 
     /**
      * Constructor
@@ -37,7 +36,7 @@ class ArticleVersion
     public function __construct(ArticleEntry $articleEntry, SplFileInfo $directory)
     {
         $this->_articleEntry = $articleEntry;
-		$this->_directory = $directory;
+        $this->_directory = $directory;
     }
 
     /**
@@ -47,7 +46,7 @@ class ArticleVersion
      */
     public function getFiles(): array
     {
-        return $this->_files;
+        return array_values(iterator_to_array(new FilesystemIterator($this->_directory)));
     }
 
     /**
@@ -58,7 +57,7 @@ class ArticleVersion
      */
     public function getMetadataFile(): SplFileInfo
     {
-        $count = count($paths = array_filter($this->_files, function ($path) {
+        $count = count($paths = array_filter($this->getFiles(), function ($path) {
             return preg_match('/\.xml$/i', $path);
         }));
         if ($count != 1) {
@@ -75,7 +74,7 @@ class ArticleVersion
      */
     public function getSubmissionFile(): ?SplFileInfo
     {
-        $count = count($paths = array_filter($this->_files, function ($path) {
+        $count = count($paths = array_filter($this->getFiles(), function ($path) {
             return preg_match('/\.pdf$/i', $path);
         }));
         if ($count > 1) {
@@ -91,7 +90,7 @@ class ArticleVersion
      */
     public function getHtmlFiles(): array
     {
-        return array_values(array_filter($this->_files, function ($path) {
+        return array_values(array_filter($this->getFiles(), function ($path) {
             return preg_match('/\.html?$/i', $path);
         }));
     }
@@ -117,7 +116,7 @@ class ArticleVersion
      */
     public function getSubmissionCoverFile(): ?SplFileInfo
     {
-        $count = count($paths = array_filter($this->_files, function ($path) {
+        $count = count($paths = array_filter($this->getFiles(), function ($path) {
             return preg_match('/cover\.[a-z]{3}/i', $path);
         }));
         if ($count > 1) {
@@ -131,12 +130,12 @@ class ArticleVersion
      *
      * @throws NoSuitableParserException Throws if no parser could understand the format
      */
-    public function process(Configuration $configuration): BaseParser
+    public function process(Configuration $configuration, ?Submission $submission = null): BaseParser
     {
         /** @var BaseParser */
         foreach ($configuration->getParsers() as $parser) {
             try {
-                $instance = new $parser($configuration, $this);
+                $instance = new $parser($configuration, $this, $submission);
                 $instance->execute();
                 return $instance;
             } catch (InvalidDocTypeException $e) {
@@ -168,7 +167,7 @@ class ArticleVersion
         return $this->_directory;
     }
 
-	/**
+    /**
      * Gets the version
      */
     public function getVersion(): int

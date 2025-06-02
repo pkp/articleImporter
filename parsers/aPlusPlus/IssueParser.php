@@ -12,7 +12,6 @@
 
 namespace APP\plugins\importexport\articleImporter\parsers\aPlusPlus;
 
-use APP\plugins\importexport\articleImporter\ArticleImporterPlugin;
 use APP\issue\Issue;
 use APP\facades\Repo;
 use DateTimeImmutable;
@@ -61,7 +60,7 @@ trait IssueParser
 
         if (!$this->_issue) {
             // Create a new issue
-            $issue = Repo::issue()->dao->newDataObject();
+            $issue = Repo::issue()->newDataObject();
 
             $publicationDate = $this->getDateFromNode($this->selectFirst('Journal/Volume/Issue/IssueInfo/IssueHistory/OnlineDate'))
                 ?: $this->getDateFromNode($this->selectFirst('Journal/Volume/Issue/IssueInfo/IssueHistory/CoverDate'))
@@ -82,7 +81,7 @@ trait IssueParser
             $issue->stampModified();
             Repo::issue()->add($issue);
 
-            $this->setIssueCover($issue);
+            $this->setIssueCoverImage($issue);
 
             $this->_isIssueOwner = true;
             $this->_issue = $issue;

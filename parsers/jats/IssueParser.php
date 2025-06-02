@@ -12,8 +12,6 @@
 
 namespace APP\plugins\importexport\articleImporter\parsers\jats;
 
-use APP\plugins\importexport\articleImporter\ArticleImporterPlugin;
-
 use APP\issue\Issue;
 use DateTimeImmutable;
 use DOMDocument;
@@ -25,7 +23,7 @@ trait IssueParser
     /** @var bool True if the issue was created by this instance */
     private bool $_isIssueOwner = false;
     /** @var array{date:?DateTimeImmutable, title: ?string, section: ?string} Issue metadata */
-    private $_issueMeta;
+    private array $_issueMeta;
 
     /** @var Issue Issue instance */
     private ?Issue $_issue = null;
@@ -106,7 +104,7 @@ trait IssueParser
             $locale = $this->getLocale();
 
             // Create a new issue
-            $issue = Repo::issue()->dao->newDataObject();
+            $issue = Repo::issue()->newDataObject();
 
             $node = $this->selectFirst("front/article-meta/pub-date[@pub-type='collection']");
             $publicationDate = $this->getIssueMeta()['date'] ?? $this->getDateFromNode($node) ?? $this->getPublicationDate();
@@ -127,7 +125,7 @@ trait IssueParser
             $issue->stampModified();
             Repo::issue()->add($issue);
 
-			$this->setIssueCover($issue);
+            $this->setIssueCoverImage($issue);
 
             $this->_isIssueOwner = true;
             $this->_issue = $issue;

@@ -67,7 +67,7 @@ trait SectionParser
 
         if (!$this->_section) {
             // Creates a new section
-            $section = Repo::section()->dao->newDataObject();
+            $section = Repo::section()->newDataObject();
             $section->setData('contextId', $this->getContextId());
             $section->setData('title', $sectionName, $locale);
             $section->setData('abbrev', strtoupper(substr($sectionName, 0, 3)), $locale);
