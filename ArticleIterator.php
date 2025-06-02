@@ -12,67 +12,38 @@
 
 namespace APP\plugins\importexport\articleImporter;
 
-use ArrayIterator;
+use Generator;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
-use SplFileInfo;
 
-class ArticleIterator extends ArrayIterator
+class ArticleIterator implements \IteratorAggregate
 {
-    /**
-     * Constructor
-     *
-     * @param string $path The base import path
-     */
+    private const REQUIRED_DEPTH = 4; // volume/issue/article/version
+    /** @var string The path */
+    private $path;
+
     public function __construct(string $path)
     {
-        parent::__construct($this->_getEntries($path));
+        $this->path = $path;
     }
 
-    /**
-     * Retrieves a list of ArticleEntry with the paths that follow the folder convention
-     *
-     * @return ArticleEntry[]
-     */
-    private function _getEntries(string $path): array
+	/**
+	 * Retrieves the iterator
+	 * @return iterable<ArticleEntry>
+	 */
+    public function getIterator(): Generator
     {
-        $directoryIterator = new RecursiveDirectoryIterator($path);
-        $recursiveIterator = new RecursiveIteratorIterator($directoryIterator, RecursiveIteratorIterator::SELF_FIRST);
-        // Ignores deeper folders
-        $recursiveIterator->setMaxDepth(4);
-        $articleEntries = [];
+        $directoryIterator = new RecursiveDirectoryIterator($this->path);
+        $recursiveIterator = new RecursiveIteratorIterator(
+            $directoryIterator,
+            RecursiveIteratorIterator::SELF_FIRST
+        );
+        $recursiveIterator->setMaxDepth(self::REQUIRED_DEPTH);
 
-        foreach ($recursiveIterator as $file) {
-            if ($file->isFile() && $recursiveIterator->getDepth() >= 3) {
-                $this->_processFile($file, $recursiveIterator->getDepth(), $articleEntries);
+        foreach ($recursiveIterator as $fileInfo) {
+            if (!$fileInfo->isDot() && $fileInfo->isDir() && $recursiveIterator->getDepth() === static::REQUIRED_DEPTH) {
+                yield new ArticleEntry($fileInfo);
             }
         }
-
-        // Sorts the entries by key (at this point made up of "volume-issue-article")
-        ksort($articleEntries, SORT_NATURAL);
-
-        return $articleEntries;
-    }
-
-    /**
-     * Process a file and add it to the appropriate ArticleEntry
-     */
-    private function _processFile(SplFileInfo $file, int $depth, array &$articleEntries): void
-    {
-        $pathInfo = $file->getPathInfo();
-        if ($depth === 4) {
-            $version = $pathInfo->getFilename();
-            $pathInfo = $pathInfo->getPathInfo();
-        } else {
-            $version = '1';
-        }
-
-        $article = $pathInfo->getFilename();
-        $issue = $pathInfo->getPathInfo()->getFilename();
-        $volume = $pathInfo->getPathInfo()->getPathInfo()->getFilename();
-
-        $key = "{$volume}-{$issue}-{$article}";
-        ($articleEntries[$key] ?? $articleEntries[$key] = new ArticleEntry($volume, $issue, $article))
-            ->addFile($file, $version);
     }
 }

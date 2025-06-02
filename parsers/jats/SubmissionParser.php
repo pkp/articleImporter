@@ -50,7 +50,7 @@ trait SubmissionParser
         $article->setData('locale', $this->getLocale());
 
         $date = $this->getDateFromNode($this->selectFirst("front/article-meta/history/date[@date-type='received']")) ?: $this->getPublicationDate()->add(new DateInterval('P1D'));
-        $article->setData('dateSubmitted', $date->format(ArticleImporterPlugin::DATETIME_FORMAT));
+        $article->setData('dateSubmitted', $date->format(static::DATETIME_FORMAT));
 
         // Creates the submission
         Repo::submission()->dao->insert($article);

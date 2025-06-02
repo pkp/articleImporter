@@ -12,6 +12,7 @@
 
 namespace APP\plugins\importexport\articleImporter;
 
+use APP\core\Application;
 use APP\plugins\importexport\articleImporter\exceptions\AlreadyExistsException;
 use APP\plugins\importexport\articleImporter\exceptions\InvalidDocTypeException;
 use APP\publication\Publication;
@@ -21,6 +22,7 @@ use APP\section\Section;
 use APP\author\Author;
 use APP\file\PublicFileManager;
 use APP\facades\Repo;
+use DateTimeImmutable;
 use DOMDocument;
 use DOMDocumentType;
 use DOMElement;
@@ -29,8 +31,15 @@ use DOMNodeList;
 use DOMText;
 use DOMXPath;
 use Exception;
+use GlobIterator;
+use PKP\core\Core;
+use PKP\core\PKPString;
 use PKP\db\DAORegistry;
 use PKP\facades\Locale;
+use PKP\file\TemporaryFile;
+use PKP\file\TemporaryFileDAO;
+use PKP\file\TemporaryFileManager;
+use PKP\Plugins\ImportExport\ArticleImporter\ArticleVersion;
 use PKP\submission\GenreDAO;
 use XSLTProcessor;
 
@@ -38,8 +47,8 @@ abstract class BaseParser
 {
     /** @var Configuration Configuration */
     private Configuration $_configuration;
-    /** @var ArticleEntry Article entry */
-    protected ArticleEntry $_entry;
+    /** @var ArticleVersion Article version */
+    protected $_version;
     /**
      * The XML document
      */
@@ -58,10 +67,10 @@ abstract class BaseParser
     /**
      * Constructor
      */
-    public function __construct(Configuration $configuration, ArticleEntry $entry)
+    public function __construct(Configuration $configuration, ArticleVersion $version)
     {
         $this->_configuration = $configuration;
-        $this->_entry = $entry;
+        $this->_version = $version;
         $context = $this->_configuration->getContext();
         $this->_contextId = $context->getId();
         $this->_locale = $context->getPrimaryLocale();
@@ -117,165 +126,11 @@ abstract class BaseParser
             $this
                 ->_ensureMetadataIsValidAndParse()
                 ->_ensureSubmissionDoesNotExist()
-                ->_processFullText(true)
                 ->getPublication();
         } catch (Exception $e) {
             $this->rollback();
             throw $e;
         }
-    }
-
-    private function _processFullText(bool $overwrite = false): static
-    {
-        static $xslt;
-
-        if (!$this->selectFirst('/article/body') || (!$overwrite && count($this->getArticleEntry()->getHtmlFiles()))) {
-            return $this;
-        }
-        libxml_use_internal_errors(true);
-        if (!$xslt) {
-            $document = new DOMDocument('1.0', 'utf-8');
-            $document->load(__DIR__ . '/jats/xslt/main/jats-html.xsl');
-            $xslt = new XSLTProcessor();
-            $xslt->registerPHPFunctions();
-            $xslt->importStyleSheet($document);
-        }
-
-        $metadata = $this->getArticleEntry()->getMetadataFile();
-        $xml = new DOMDocument('1.0', 'utf-8');
-        $xml->load($metadata);
-        $xpath = new DOMXPath($xml);
-        $xpath->registerNamespace('xlink', 'http://www.w3.org/1999/xlink');
-        $defaultLang = $xml->documentElement->getAttributeNS('http://www.w3.org/XML/1998/namespace', 'lang') ?: $this->getLocale();
-        $langs = [$defaultLang => 0];
-        foreach ($this->select("body//sec[@xml:lang!='{$defaultLang}']", null, $xpath) as $sec) {
-            $langs[$sec->getAttributeNS('http://www.w3.org/XML/1998/namespace', 'lang')] = 0;
-        }
-        foreach (array_keys($langs) as $lang) {
-            $xml = new DOMDocument('1.0', 'utf-8');
-            $xml->load($metadata);
-            $xpath = new DOMXPath($xml);
-            $xpath->registerNamespace('xlink', 'http://www.w3.org/1999/xlink');
-
-            foreach ($this->select('//contrib-group/contrib', null, $xpath) as $contribNode) {
-                $affiliations = [];
-                $xrefs = [];
-                /** @var DOMElement */
-                foreach ($contribNode->getElementsByTagName('xref') as $xref) {
-                    $id = $xref->getAttribute('rid');
-                    switch ($xref->getAttribute('ref-type')) {
-                        case 'fn':
-                            /** @var DOMElement $node */
-                            if ($node = $this->selectFirst("//back/fn-group/fn[@id='{$id}']", null, $xpath)) {
-                                $node = $node->cloneNode(true);
-                                /** @var DOMElement */
-                                foreach (iterator_to_array($node->getElementsByTagName('label')) as $label) {
-                                    $label->parentNode->removeChild($label);
-                                }
-                                $this->fixJatsTags($node);
-                                $bioNode = $node->ownerDocument->createElement('bio');
-                                foreach (iterator_to_array($node->childNodes) as $childNode) {
-                                    $bioNode->appendChild($childNode);
-                                }
-                                $xrefs[] = $xref;
-                                $contribNode->appendChild($bioNode);
-                            }
-                            break;
-
-                        case 'aff':
-                            if ($affiliation = preg_replace(['/\r\n|\n\r|\r|\n/', '/\s{2,}/', '/\s+([,.])/'], [' ', ' ', '$1'], trim($this->selectText("../../aff[@id='{$id}']", $xref, $xpath)))) {
-                                $affiliations[] = $affiliation;
-                            }
-                            $xrefs[] = $xref;
-                            break;
-                    }
-                }
-                if (count($affiliations)) {
-                    $node = $contribNode->ownerDocument->createElement('aff', implode('; ', $affiliations));
-                    $contribNode->appendChild($node);
-                }
-                foreach($xrefs as $xref) {
-                    $xref->parentNode->removeChild($xref);
-                }
-            }
-
-            if (count($langs) > 1) {
-                $filter = "body//sec[@xml:lang!='{$lang}']";
-                if ($defaultLang !== $lang) {
-                    $filter .= " | body//sec[not(@xml:lang)]";
-                }
-                $isSharedFnGroup = count($this->select('back/fn-group', null, $xpath)) !== count($langs);
-                if (!$isSharedFnGroup) {
-                    $filter .= " | back/fn-group[@xml:lang!='{$lang}']";
-                    if ($defaultLang !== $lang) {
-                        $filter .= " | back/fn-group[not(@xml:lang)]";
-                    }
-                }
-                foreach (iterator_to_array($this->select($filter, null, $xpath)) as $node) {
-                    $node->parentNode->removeChild($node);
-                }
-            }
-
-            /** @var DOMElement */
-            foreach (iterator_to_array($this->select('body//sec//label', null, $xpath)) as $label) {
-                for($title = $label; ($title = $title->nextSibling) && $title->nodeType !== XML_ELEMENT_NODE;);
-                /** @var DOMElement $title */
-                if ($title && $title->tagName === 'title') {
-                    $title->insertBefore($title->ownerDocument->createTextNode($label->textContent . ' '), $title->firstChild);
-                    $label->parentNode->removeChild($label);
-                }
-            }
-            $switch = function (DOMElement $main, DOMElement $translation): void {
-                $namespace = 'http://www.w3.org/XML/1998/namespace';
-                $mainNodes = iterator_to_array($main->childNodes);
-                $translationNodes = iterator_to_array($translation->childNodes);
-                foreach ($mainNodes as $node) {
-                    $translation->appendChild($node);
-                }
-                foreach ($translationNodes as $node) {
-                    $main->appendChild($node);
-                }
-
-                $translationLang = $translation->parentNode->getAttributeNS($namespace, 'lang');
-                $translation->parentNode->setAttributeNS($namespace, 'lang', $main->getAttributeNS($namespace, 'lang'));
-                $main->setAttributeNS($namespace, 'lang', $translationLang);
-            };
-            /** @var DOMElement */
-            if (
-                ($title = $this->selectFirst("/article/front/article-meta/title-group/article-title[@xml:lang!='{$lang}']", null, $xpath))
-                && ($translatedTitle = $this->selectFirst("/article/front/article-meta/title-group/trans-title-group[@xml:lang='{$lang}']/trans-title", null, $xpath))
-            ) {
-                $switch($title, $translatedTitle);
-            }
-            if (
-                ($title = $this->selectFirst("/article/front/article-meta/title-group/subtitle[@xml:lang!='{$lang}']", null, $xpath))
-                && ($translatedTitle = $this->selectFirst("/article/front/article-meta/title-group/trans-title-group[@xml:lang='{$lang}']/trans-subtitle", null, $xpath))
-            ) {
-                $switch($title, $translatedTitle);
-            }
-            $xml->documentElement->setAttributeNS('http://www.w3.org/XML/1998/namespace', 'lang', $lang);
-
-            /** @var DOMElement */
-            foreach (iterator_to_array($this->select("//xref", null, $xpath)) as $xref) {
-                if (!$this->selectFirst("//[@id='" . $xref->getAttribute('rid') . "']", null, $xpath)) {
-                    echo "Dropped invalid xref to: " . $xref->getAttribute('rid') . "\n";
-                    $xref->parentNode->removeChild($xref);
-                }
-            }
-
-            $output = $xslt->transformToXML($xml);
-
-            if ($output === false) {
-                throw new Exception("Failed to create HTML file from JATS XML: \n" . print_r(libxml_get_errors(), true));
-            }
-            $path = $metadata->getPathInfo() . '/' . $metadata->getBasename($metadata->getExtension()) . (count($langs) > 1 ? "{$lang}." : '') . 'html';
-
-            file_put_contents($path, $output);
-            $this->getArticleEntry()->reloadFiles();
-        }
-
-        //exit;
-        return $this;
     }
 
     /**
@@ -285,14 +140,13 @@ abstract class BaseParser
      */
     private function _ensureMetadataIsValidAndParse(): static
     {
-        // Tries to parse the XML
-        $this->_document = new DOMDocument('1.0', 'utf-8');
-        if (!$this->_document->load($this->getArticleEntry()->getMetadataFile()->getPathname())) {
+        $document = new DOMDocument('1.0', 'utf-8');
+        if (!$document->load($this->_version->getMetadataFile()->getPathname())) {
             throw new Exception(__('plugins.importexport.jats.failedToParseXMLDocument'));
         }
 
         // Checks whether the loaded document is supported by the parser (the doctype should match)
-        $docType = $this->_document->doctype;
+        $docType = $document->doctype;
         $supportedDocTypes = $this->getDocType();
         $found = false;
         foreach ($supportedDocTypes as $supportedDocType) {
@@ -305,9 +159,25 @@ abstract class BaseParser
             throw new InvalidDocTypeException(__('plugins.importexport.articleImporter.invalidDoctype'));
         }
 
+        $this->_document = $document;
         $this->_xpath = new DOMXPath($this->_document);
         $this->_xpath->registerNamespace('xlink', 'http://www.w3.org/1999/xlink');
         $this->_locale = $this->getLocale($this->selectText('@xml:lang'));
+        return $this;
+    }
+
+    /**
+     * Checks if the submission isn't already registered using the public IDs
+     *
+     * @throws Exception Throws when a submission with the same public ID is found
+     */
+    public function _ensureSubmissionDoesNotExist(): static
+    {
+        foreach ($this->getPublicIds() as $type => $id) {
+            if (Repo::submission()->dao->getByPubId($type, $id, $this->getContextId())) {
+                throw new AlreadyExistsException(__('plugins.importexport.articleImporter.alreadyExists', ['type' => $type, 'id' => $id]));
+            }
+        }
         return $this;
     }
 
@@ -357,21 +227,6 @@ abstract class BaseParser
     }
 
     /**
-     * Checks if the submission isn't already registered using the public IDs
-     *
-     * @throws Exception Throws when a submission with the same public ID is found
-     */
-    public function _ensureSubmissionDoesNotExist(): static
-    {
-        foreach ($this->getPublicIds() as $type => $id) {
-            if (Repo::submission()->dao->getByPubId($type, $id, $this->getContextId())) {
-                throw new AlreadyExistsException(__('plugins.importexport.articleImporter.alreadyExists', ['type' => $type, 'id' => $id]));
-            }
-        }
-        return $this;
-    }
-
-    /**
      * Retrieves the context ID
      */
     public function getContextId(): int
@@ -409,11 +264,19 @@ abstract class BaseParser
     }
 
     /**
-     * Retrieves the article entry instance
+     * Gets the article version
+     */
+    public function getArticleVersion(): ArticleVersion
+    {
+        return $this->_version;
+    }
+
+    /**
+     * Gets the article entry
      */
     public function getArticleEntry(): ArticleEntry
     {
-        return $this->_entry;
+        return $this->_version->getArticleEntry();
     }
 
     /**
@@ -457,27 +320,72 @@ abstract class BaseParser
     /**
      * Looks in $issueFolder for a cover image, and applies it to $issue if found
      */
-    public function setIssueCover(string $issueFolder, Issue $issue)
+    public function setIssueCoverImage(Issue $issue)
     {
-        $issueCover = null;
-        foreach ($this->getConfiguration()->getImageExtensions() as $ext) {
-            $checkFile = $issueFolder . DIRECTORY_SEPARATOR . $this->getConfiguration()->getIssueCoverFilename() . '.' . $ext;
-            if (file_exists($checkFile)) {
-                $issueCover = $checkFile;
+        $issueFolder = (string) $this->getArticleVersion()->getPath();
+        foreach (new GlobIterator("{$issueFolder}/../../" . $this->getConfiguration()->getCoverFilename() . '.*') as $file) {
+            if (in_array(strtolower($file->getExtension()), $this->getConfiguration()->getImageExtensions())) {
+                $issueCover = $file;
                 break;
             }
         }
-        if ($issueCover) {
-            $publicFileManager = new PublicFileManager();
-            $fileparts = explode('.', $issueCover);
-            $ext = array_pop($fileparts);
-            $newFileName = 'cover_issue_' . $issue->getId() . '_' . $this->getLocale() . '.' . $ext;
-            $publicFileManager->copyContextFile($this->getContextId(), $issueCover, $newFileName);
-            $issue->setCoverImage($newFileName, $this->getLocale());
-            Repo::issue()->edit($issue, []);
+
+        if (!$issueCover) {
+            return;
         }
+
+        $publicFileManager = new PublicFileManager();
+        $newFileName = 'cover_issue_' . $issue->getId() . '_' . $this->getLocale() . '.' . $issueCover->getExtension();
+        $publicFileManager->copyContextFile($this->getContextId(), $issueCover, $newFileName);
+        $issue->setCoverImage($newFileName, $this->getLocale());
+        Repo::issue()->edit($issue, []);
     }
 
+    /**
+     * Sets the publication cover
+     */
+    public function setPublicationCoverImage(Publication $publication): void
+    {
+        import('lib.pkp.classes.file.TemporaryFileManager');
+        $fileManager = new TemporaryFileManager();
+        $filename = $this->getArticleVersion()->getSubmissionCoverFile();
+        if (!$filename) {
+            return;
+        }
+
+        // Get the file extension, then rename the file.
+        $fileExtension = $fileManager->parseFileExtension($filename->getBasename());
+
+        // Try to create destination directory
+        $fileManager->mkdirtree($fileManager->getBasePath());
+
+        $newFileName = basename(tempnam($fileManager->getBasePath(), $fileExtension));
+        if (!$newFileName) {
+            return;
+        }
+
+        $fileManager->copyFile($filename, $fileManager->getBasePath() . "/{$newFileName}");
+        /** @var TemporaryFileDAO */
+        $temporaryFileDao = DAORegistry::getDAO('TemporaryFileDAO');
+        /** @var TemporaryFile */
+        $temporaryFile = $temporaryFileDao->newDataObject();
+
+        $temporaryFile->setUserId(Application::get()->getRequest()->getUser()->getId());
+        $temporaryFile->setServerFileName($newFileName);
+        $temporaryFile->setFileType(PKPString::mime_content_type($fileManager->getBasePath() . "/$newFileName", $fileExtension));
+        $temporaryFile->setFileSize($filename->getSize());
+        $temporaryFile->setOriginalFileName($fileManager->truncateFileName($filename->getBasename(), 127));
+        $temporaryFile->setDateUploaded(Core::getCurrentDate());
+
+        $temporaryFileDao->insertObject($temporaryFile);
+
+        $publication->setData('coverImage', [
+            'dateUploaded' => (new DateTimeImmutable())->format(static::DATETIME_FORMAT),
+            'uploadName' => $temporaryFile->getOriginalFileName(),
+            'temporaryFileId' => $temporaryFile->getId(),
+            'altText' => 'Publication image'
+        ], $this->getLocale());
+    }
 
     /**
      * Find a Genre ID for a context and extension
