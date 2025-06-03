@@ -13,7 +13,6 @@
 namespace APP\plugins\importexport\articleImporter\parsers\aPlusPlus;
 
 use APP\facades\Repo;
-use APP\plugins\importexport\articleImporter\ArticleImporterPlugin;
 use DateInterval;
 use APP\submission\Submission;
 

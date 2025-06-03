@@ -64,11 +64,11 @@ class Configuration
      * @param string $email Default email when the author email is not provided in the XML
      * @param string $importPath Base path where the "volume/issue/article" structure is kept
      */
-    public function __construct(array $parsers, string $contextPath, string $username, string $editorUsername, string $email, string $importPath, string $defaultSectionName = 'Articles')
+    public function __construct(array $parsers, string $contextPath, string $username, string $editorUsername, string $email, string $importPath, string $defaultSectionName = 'Articles', bool $generateHtml = true)
     {
         $this->_defaultSectionName = $defaultSectionName;
         $this->_parsers = $parsers;
-
+        $this->_generateHtml = $generateHtml;
         if (!$this->_context = Application::getContextDAO()->getByPath($contextPath)) {
             throw new InvalidArgumentException(__('plugins.importexport.articleImporter.unknownJournal', ['journal' => $contextPath]));
         }
@@ -93,7 +93,7 @@ class Configuration
         // Finds the user group ID for the editor
         $editorUserGroups = Repo::userGroup()->getByRoleIds([Role::ROLE_ID_MANAGER], $this->_context->getId());
         foreach ($editorUserGroups as $userGroup) {
-            if (UserGroupStage::withUserGroupId($userGroup->id)->withStageId(\WORKFLOW_STAGE_ID_PRODUCTION)->count()) {
+            if (UserGroupStage::withUserGroupId($userGroup->id)->withStageId(WORKFLOW_STAGE_ID_PRODUCTION)->count()) {
                 $this->_editorGroupId = $userGroup->id;
                 break;
             }
@@ -231,5 +231,13 @@ class Configuration
     public function canUseCategoryAsSection(): bool
     {
         return $this->_canUseCategoryAsSection;
+    }
+
+    /**
+     * Retrieves whether the HTML should be generated
+     */
+    public function shouldGenerateHtml(): bool
+    {
+        return $this->_generateHtml;
     }
 }

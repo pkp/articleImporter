@@ -121,9 +121,9 @@ or pipeline) parameterized.
 <xsl:stylesheet version="1.0"
   xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
   xmlns:xlink="http://www.w3.org/1999/xlink"
-	xmlns:exsl="http://exslt.org/common"
+  xmlns:exsl="http://exslt.org/common"
   xmlns:mml="http://www.w3.org/1998/Math/MathML"
-	>
+  >
 
 
   <!-- ============================================================= -->
@@ -210,8 +210,8 @@ or pipeline) parameterized.
 
   <xsl:variable name="verbose" select="$report-warnings='yes'"/>
 
-	<xsl:variable name="lowercase" select="'abcdefghijklmnopqrstuvwxyz'" />
-	<xsl:variable name="uppercase" select="'ABCDEFGHIJKLMNOPQRSTUVWXYZ'" />
+  <xsl:variable name="lowercase" select="'abcdefghijklmnopqrstuvwxyz'" />
+  <xsl:variable name="uppercase" select="'ABCDEFGHIJKLMNOPQRSTUVWXYZ'" />
 
   <!-- Keys -->
 
@@ -249,7 +249,7 @@ or pipeline) parameterized.
           select="/article/front/article-meta/title-group/article-title[1]"/>
       </title>
       <link rel="stylesheet" type="text/css" href="{$css}"/>
-			<script defer="defer" src="/js/fulltext.js"></script>
+      <script defer="defer" src="/js/fulltext.js"></script>
       <!-- When importing jats-oasis-html.xsl, we can call a template to insert CSS for our tables. -->
       <!--<xsl:call-template name="p:table-css" xmlns:p="http://www.wendellpiez.com/oasis-tables/util"/>-->
     </head>
@@ -287,7 +287,7 @@ or pipeline) parameterized.
 
   <xsl:template name="make-article">
     <!-- Generates a series of (flattened) divs for contents of any
-	       article, sub-article or response -->
+         article, sub-article or response -->
 
     <!-- variable to be used in div id's to keep them unique -->
     <xsl:variable name="this-article">
@@ -326,51 +326,51 @@ or pipeline) parameterized.
     </xsl:for-each>
 
     <!-- sub-article or response (recursively calls
-		     this template) -->
+         this template) -->
     <xsl:apply-templates select="sub-article | response"/>
   </xsl:template>
 
-	<xsl:template match="front | front-stub">
-		<xsl:variable name="front" select="."/>
-		<xsl:for-each select="article-meta/title-group/article-title/@xml:lang | article-meta/title-group/trans-title-group/@xml:lang">
-			<xsl:variable name="isPrimary" select="position() = 1"/>
-			<xsl:variable name="lang" select="."/>
-	      <!-- change context to front/article-meta (again) -->
+  <xsl:template match="front | front-stub">
+    <xsl:variable name="front" select="."/>
+    <xsl:for-each select="article-meta/title-group/article-title/@xml:lang | article-meta/title-group/trans-title-group/@xml:lang">
+      <xsl:variable name="isPrimary" select="position() = 1"/>
+      <xsl:variable name="lang" select="."/>
+        <!-- change context to front/article-meta (again) -->
       <xsl:for-each select="$front/article-meta | $front/front-stub">
         <div class="metadata centered">
           <xsl:apply-templates mode="metadata" select="title-group">
-						<xsl:with-param name="lang" select="$lang"/>
-					</xsl:apply-templates>
+            <xsl:with-param name="lang" select="$lang"/>
+          </xsl:apply-templates>
         </div>
-				<xsl:if test="$isPrimary">
-					<!-- contrib-group, aff, aff-alternatives, author-notes -->
-					<xsl:apply-templates mode="metadata" select="contrib-group"/>
-					<!-- back in article-meta or front-stub context -->
-					<xsl:if test="aff | aff-alternatives | author-notes">
-						<div class="metadata two-column table">
-							<div class="row">
-							<div class="cell empty"/>
-							<div class="cell">
-								<div class="metadata-group">
-									<xsl:apply-templates mode="metadata"
-										select="aff | aff-alternatives | author-notes"/>
-								</div>
-							</div>
-							</div>
-						</div>
-					</xsl:if>
+        <xsl:if test="$isPrimary">
+          <!-- contrib-group, aff, aff-alternatives, author-notes -->
+          <xsl:apply-templates mode="metadata" select="contrib-group"/>
+          <!-- back in article-meta or front-stub context -->
+          <xsl:if test="aff | aff-alternatives | author-notes">
+            <div class="metadata two-column table">
+              <div class="row">
+              <div class="cell empty"/>
+              <div class="cell">
+                <div class="metadata-group">
+                  <xsl:apply-templates mode="metadata"
+                    select="aff | aff-alternatives | author-notes"/>
+                </div>
+              </div>
+              </div>
+            </div>
+          </xsl:if>
 
-					<!-- Cell 2: Article information -->
-					<xsl:for-each select="$front/article-meta | $front/front-stub">
-						<div class="metadata-group metadata-group-date">
-							<xsl:apply-templates mode="metadata" select="history/date"/>
-							<xsl:apply-templates mode="metadata" select="pub-date"/>
-							<xsl:apply-templates mode="metadata" select="elocation-id"/>
-							<xsl:apply-templates mode="metadata" select="isbn"/>
-							<xsl:apply-templates mode="metadata" select="article-id"/>
-						</div>
-				</xsl:for-each>
-			</xsl:if>
+          <!-- Cell 2: Article information -->
+          <xsl:for-each select="$front/article-meta | $front/front-stub">
+            <div class="metadata-group metadata-group-date">
+              <xsl:apply-templates mode="metadata" select="history/date"/>
+              <xsl:apply-templates mode="metadata" select="pub-date"/>
+              <xsl:apply-templates mode="metadata" select="elocation-id"/>
+              <xsl:apply-templates mode="metadata" select="isbn"/>
+              <xsl:apply-templates mode="metadata" select="article-id"/>
+            </div>
+        </xsl:for-each>
+      </xsl:if>
 
         <!-- abstract(s) -->
         <xsl:if test="abstract | trans-abstract">
@@ -393,10 +393,10 @@ or pipeline) parameterized.
               </div>
             </div>
           </xsl:for-each>
-					<xsl:call-template name="keywords-metadata">
-						<xsl:with-param name="class">metadata-keywords</xsl:with-param>
-						<xsl:with-param name="lang" select="$lang"/>
-					</xsl:call-template>
+          <xsl:call-template name="keywords-metadata">
+            <xsl:with-param name="class">metadata-keywords</xsl:with-param>
+            <xsl:with-param name="lang" select="$lang"/>
+          </xsl:call-template>
           <!-- end of abstract or trans-abstract -->
         </xsl:if>
         <!-- end of dealing with abstracts -->
@@ -406,14 +406,14 @@ or pipeline) parameterized.
               <xsl:apply-templates mode="metadata" select="."/>
             </div>
       </xsl:for-each>
-		</xsl:for-each>
-		<hr class="part-rule"/>
+    </xsl:for-each>
+    <hr class="part-rule"/>
     <!-- end of big front-matter pull -->
   </xsl:template>
 
   <xsl:template name="keywords-metadata">
-		<xsl:param name="lang" />
-		<xsl:param name="class" />
+    <xsl:param name="lang" />
+    <xsl:param name="class" />
     <!-- handles: article-categories, kwd-group, counts,
            supplementary-material, custom-meta-group
          Plus also generates a sheet of processing warnings
@@ -427,8 +427,8 @@ or pipeline) parameterized.
                 select="supplementary-material"/>
 
               <xsl:apply-templates mode="metadata" select="kwd-group[@xml:lang=$lang]">
-								<xsl:with-param name="class" select="$class" />
-							</xsl:apply-templates>
+                <xsl:with-param name="class" select="$class" />
+              </xsl:apply-templates>
             </div>
       </div>
       </xsl:if>
@@ -573,10 +573,10 @@ or pipeline) parameterized.
   </xsl:template>
 
   <xsl:template match="trans-title-group" mode="metadata">
-		<xsl:param name="lang"/>
+    <xsl:param name="lang"/>
     <xsl:apply-templates mode="metadata">
-			<xsl:with-param name="lang" select="$lang"/>
-		</xsl:apply-templates>
+      <xsl:with-param name="lang" select="$lang"/>
+    </xsl:apply-templates>
   </xsl:template>
 
 
@@ -590,16 +590,16 @@ or pipeline) parameterized.
   <!-- trans-title-group content: (trans-title, trans-subtitle*) -->
 
   <xsl:template match="trans-title" mode="metadata">
-		<h4>
-    	<xsl:call-template name="metadata-labeled-entry"/>
-		</h4>
+    <h4>
+      <xsl:call-template name="metadata-labeled-entry"/>
+    </h4>
   </xsl:template>
 
 
   <xsl:template match="trans-subtitle" mode="metadata">
-		<h5>
-    	<xsl:call-template name="metadata-labeled-entry"/>
-		</h5>
+    <h5>
+      <xsl:call-template name="metadata-labeled-entry"/>
+    </h5>
   </xsl:template>
 
 
@@ -735,18 +735,18 @@ or pipeline) parameterized.
   <xsl:template match="history/date" mode="metadata">
     <xsl:call-template name="metadata-labeled-entry">
       <xsl:with-param name="label">
-				<span class="translate">
+        <span class="translate">
         <xsl:text>Date</xsl:text>
         <xsl:for-each select="@date-type">
           <xsl:choose>
             <xsl:when test=".='accepted'"> Accepted</xsl:when>
             <xsl:when test=".='received'"> Received</xsl:when>
-						<xsl:when test=".='modified'"> Modified</xsl:when>
+            <xsl:when test=".='modified'"> Modified</xsl:when>
             <xsl:when test=".='rev-request'"> Revision Requested</xsl:when>
             <xsl:when test=".='rev-recd'"> Revision Received</xsl:when>
           </xsl:choose>
         </xsl:for-each>
-				</span>
+        </span>
       </xsl:with-param>
       <xsl:with-param name="contents">
         <xsl:call-template name="format-date"/>
@@ -758,7 +758,7 @@ or pipeline) parameterized.
   <xsl:template match="pub-date" mode="metadata">
     <xsl:call-template name="metadata-labeled-entry">
       <xsl:with-param name="label">
-				<xsl:attribute name="class">translate</xsl:attribute>
+        <xsl:attribute name="class">translate</xsl:attribute>
         <xsl:text>Publication Date</xsl:text>
         <xsl:call-template name="append-pub-type"/>
       </xsl:with-param>
@@ -1231,15 +1231,15 @@ or pipeline) parameterized.
 
 
   <xsl:template match="title-group" mode="metadata">
-		<xsl:param name="lang"/>
+    <xsl:param name="lang"/>
     <!-- content model:
     article-title, subtitle*, trans-title-group*, alt-title*, fn-group? -->
     <!-- trans-title and trans-subtitle included for 2.3 -->
     <xsl:apply-templates select="article-title | subtitle | trans-title-group |
       trans-title | trans-subtitle"
       mode="metadata">
-			<xsl:with-param name="lang" select="$lang"/>
-		</xsl:apply-templates>
+      <xsl:with-param name="lang" select="$lang"/>
+    </xsl:apply-templates>
     <xsl:if test="alt-title | fn-group">
       <div class="document-title-notes metadata-group">
         <xsl:apply-templates select="alt-title | fn-group" mode="metadata"/>
@@ -1249,32 +1249,32 @@ or pipeline) parameterized.
 
 
   <xsl:template match="title-group/article-title" mode="metadata">
-		<xsl:param name="lang"/>
-		<xsl:if test="$lang=@xml:lang">
+    <xsl:param name="lang"/>
+    <xsl:if test="$lang=@xml:lang">
     <h1 class="document-title">
       <xsl:apply-templates/>
     </h1>
-		</xsl:if>
+    </xsl:if>
   </xsl:template>
 
 
   <xsl:template match="title-group/subtitle | trans-title-group/subtitle"
     mode="metadata">
-		<xsl:param name="lang"/>
-		<xsl:if test="$lang=@xml:lang">
-			<h2 class="document-title">
-				<xsl:apply-templates/>
-			</h2>
-		</xsl:if>
+    <xsl:param name="lang"/>
+    <xsl:if test="$lang=@xml:lang">
+      <h2 class="document-title">
+        <xsl:apply-templates/>
+      </h2>
+    </xsl:if>
   </xsl:template>
 
 
   <xsl:template match="title-group/trans-title-group" mode="metadata">
     <!-- content model: (trans-title, trans-subtitle*) -->
-		<xsl:param name="lang" />
-		<xsl:if test="$lang=@xml:lang">
-    	<xsl:apply-templates mode="metadata"/>
-		</xsl:if>
+    <xsl:param name="lang" />
+    <xsl:if test="$lang=@xml:lang">
+      <xsl:apply-templates mode="metadata"/>
+    </xsl:if>
   </xsl:template>
 
 
@@ -1344,13 +1344,13 @@ or pipeline) parameterized.
       <div class="metadata two-column table">
         <div class="row">
           <div class="cell" style="text-align: right">
-						<strong>
+            <strong>
             <xsl:call-template name="contrib-identify">
               <!-- handles (contrib-id)*,
                 (anonymous | collab | collab-alternatives |
                  name | name-alternatives | degrees | xref) -->
             </xsl:call-template>
-						</strong>
+            </strong>
           </div>
           <div class="cell">
             <xsl:call-template name="contrib-info">
@@ -1519,14 +1519,14 @@ or pipeline) parameterized.
   <xsl:template match="aff" mode="metadata">
     <xsl:call-template name="metadata-area">
       <xsl:with-param name="label"><span class="translate">Affiliation</span></xsl:with-param>
-			<xsl:with-param name="contents"><xsl:apply-templates select="."/></xsl:with-param>
+      <xsl:with-param name="contents"><xsl:apply-templates select="."/></xsl:with-param>
     </xsl:call-template>
   </xsl:template>
 
   <xsl:template match="bio" mode="metadata">
     <xsl:call-template name="metadata-area">
       <xsl:with-param name="label"><span class="translate">Bio</span></xsl:with-param>
-			<xsl:with-param name="contents"><xsl:apply-templates select="."/></xsl:with-param>
+      <xsl:with-param name="contents"><xsl:apply-templates select="."/></xsl:with-param>
     </xsl:call-template>
   </xsl:template>
 
@@ -1632,9 +1632,9 @@ or pipeline) parameterized.
 
 
   <xsl:template match="kwd-group" mode="metadata">
-		<xsl:param name="class" />
+    <xsl:param name="class" />
     <xsl:call-template name="metadata-area">
-			<xsl:with-param name="class" select="$class"/>
+      <xsl:with-param name="class" select="$class"/>
       <xsl:with-param name="label">
         <xsl:apply-templates select="title|label" mode="metadata-inline"/>
         <xsl:if test="not(title|label)">Keywords</xsl:if>
@@ -1876,7 +1876,7 @@ or pipeline) parameterized.
 
   <xsl:template name="section-title"
     match="abstract/*/title | body/*/*/title |
-		       back[title]/*/title | back[not(title)]/*/*/title">
+           back[title]/*/title | back[not(title)]/*/*/title">
     <xsl:param name="contents">
       <xsl:apply-templates/>
     </xsl:param>
@@ -1891,7 +1891,7 @@ or pipeline) parameterized.
 
   <xsl:template name="subsection-title"
     match="abstract/*/*/title | body/*/*/*/title |
-		       back[title]/*/*/title | back[not(title)]/*/*/*/title">
+           back[title]/*/*/title | back[not(title)]/*/*/*/title">
     <xsl:param name="contents">
       <xsl:apply-templates/>
     </xsl:param>
@@ -2071,16 +2071,16 @@ or pipeline) parameterized.
   <xsl:template match="graphic | inline-graphic">
     <xsl:apply-templates/>
 
-		<a href="{translate(@xlink:href, $uppercase, $lowercase)}" target="_new">
-			<img alt="{@xlink:href}">
-				<xsl:for-each select="alt-text">
-					<xsl:attribute name="alt">
-						<xsl:value-of select="normalize-space(string(.))"/>
-					</xsl:attribute>
-				</xsl:for-each>
-				<xsl:call-template name="assign-src"/>
-			</img>
-		</a>
+    <a href="{translate(@xlink:href, $uppercase, $lowercase)}" target="_new">
+      <img loading="lazy" alt="{@xlink:href}">
+        <xsl:for-each select="alt-text">
+          <xsl:attribute name="alt">
+            <xsl:value-of select="normalize-space(string(.))"/>
+          </xsl:attribute>
+        </xsl:for-each>
+        <xsl:call-template name="assign-src"/>
+      </img>
+    </a>
   </xsl:template>
 
 
@@ -2129,29 +2129,29 @@ or pipeline) parameterized.
   </xsl:template>
 
 
-	<xsl:template match="list-item">
-		<li>
-			<xsl:apply-templates/>
-		</li>
-	</xsl:template>
+  <xsl:template match="list-item">
+    <li>
+      <xsl:apply-templates/>
+    </li>
+  </xsl:template>
 
 
-	<xsl:template match="list-item/label">
-	  <!-- if the next sibling is a p, the label will be called as
-	       a run-in -->
-	  <xsl:if test="following-sibling::*[1][not(self::p)]">
-	    <xsl:call-template name="label"/>
-	  </xsl:if>
-	</xsl:template>
+  <xsl:template match="list-item/label">
+    <!-- if the next sibling is a p, the label will be called as
+         a run-in -->
+    <xsl:if test="following-sibling::*[1][not(self::p)]">
+      <xsl:call-template name="label"/>
+    </xsl:if>
+  </xsl:template>
 
 
-	<xsl:template match="media">
-		<a>
-			<xsl:call-template name="assign-id"/>
-			<xsl:call-template name="assign-href"/>
-			<xsl:apply-templates/>
-		</a>
-	</xsl:template>
+  <xsl:template match="media">
+    <a>
+      <xsl:call-template name="assign-id"/>
+      <xsl:call-template name="assign-href"/>
+      <xsl:apply-templates/>
+    </a>
+  </xsl:template>
 
 
   <xsl:template match="p | license-p">
@@ -2244,30 +2244,30 @@ or pipeline) parameterized.
   </xsl:template>
 
 
-	<xsl:template match="def-item">
-		<div class="def-item row">
-			<xsl:call-template name="assign-id"/>
-			<xsl:apply-templates/>
-		</div>
-	</xsl:template>
+  <xsl:template match="def-item">
+    <div class="def-item row">
+      <xsl:call-template name="assign-id"/>
+      <xsl:apply-templates/>
+    </div>
+  </xsl:template>
 
 
-	<xsl:template match="term">
-		<div class="def-term cell">
-			<xsl:call-template name="assign-id"/>
-		  <p>
-				<xsl:apply-templates/>
-		  </p>
-		</div>
-	</xsl:template>
+  <xsl:template match="term">
+    <div class="def-term cell">
+      <xsl:call-template name="assign-id"/>
+      <p>
+        <xsl:apply-templates/>
+      </p>
+    </div>
+  </xsl:template>
 
 
-	<xsl:template match="def">
-		<div class="def-def cell">
-			<xsl:call-template name="assign-id"/>
-			<xsl:apply-templates/>
-		</div>
-	</xsl:template>
+  <xsl:template match="def">
+    <div class="def-def cell">
+      <xsl:call-template name="assign-id"/>
+      <xsl:apply-templates/>
+    </div>
+  </xsl:template>
 
 
   <xsl:template match="disp-quote">
@@ -2396,12 +2396,12 @@ or pipeline) parameterized.
   </xsl:template>
 
 
-	<xsl:template match="tex-math">
-		<span class="tex-math">
-			<span class="generated">[TeX:] </span>
-			<xsl:apply-templates/>
-		</span>
-	</xsl:template>
+  <xsl:template match="tex-math">
+    <span class="tex-math">
+      <span class="generated">[TeX:] </span>
+      <xsl:apply-templates/>
+    </span>
+  </xsl:template>
 
 
   <xsl:template match="mml:*">
@@ -2798,7 +2798,7 @@ or pipeline) parameterized.
     </u>
   </xsl:template>
 
-	<xsl:template match="a">
+  <xsl:template match="a">
     <a href="{./@href}">
       <xsl:apply-templates/>
     </a>
@@ -2835,12 +2835,12 @@ or pipeline) parameterized.
 
 
   <xsl:template name="footnotes">
-    <xsl:call-template name="backmatter-section">
+    <!-- <xsl:call-template name="backmatter-section">
       <xsl:with-param name="generated-title">Notes</xsl:with-param>
       <xsl:with-param name="contents">
         <xsl:apply-templates select="$loose-footnotes" mode="footnote"/>
       </xsl:with-param>
-    </xsl:call-template>
+    </xsl:call-template> -->
   </xsl:template>
 
 
@@ -2975,7 +2975,7 @@ or pipeline) parameterized.
 
   <!-- ============================================================= -->
   <!--  MODE 'label-text'
-	      Generates label text for elements and their cross-references -->
+        Generates label text for elements and their cross-references -->
   <!-- ============================================================= -->
   <!--  This mode is to support auto-numbering and generating of
         labels for certain elements by the stylesheet.
@@ -3500,19 +3500,19 @@ or pipeline) parameterized.
         <xsl:if test="normalize-space(string($label))">
           <span class="generated">
             <xsl:copy-of select="$label"/>
-						<xsl:if test="not(contains(normalize-space(string($label)), ':'))">
+            <xsl:if test="not(contains(normalize-space(string($label)), ':'))">
             <xsl:text>: </xsl:text>
-						</xsl:if>
+            </xsl:if>
           </span>
         </xsl:if>
-				<xsl:choose>
-					<xsl:when test="$label='DOI'">
-						<a href="https://doi.org/{$contents}">https://doi.org/<xsl:copy-of select="$contents"/></a>
-					</xsl:when>
-					<xsl:otherwise>
-						<xsl:copy-of select="$contents"/>
-					</xsl:otherwise>
-				</xsl:choose>
+        <xsl:choose>
+          <xsl:when test="$label='DOI'">
+            <a href="https://doi.org/{$contents}">https://doi.org/<xsl:copy-of select="$contents"/></a>
+          </xsl:when>
+          <xsl:otherwise>
+            <xsl:copy-of select="$contents"/>
+          </xsl:otherwise>
+        </xsl:choose>
       </xsl:with-param>
     </xsl:call-template>
   </xsl:template>
@@ -3530,7 +3530,7 @@ or pipeline) parameterized.
 
   <xsl:template name="metadata-area">
     <xsl:param name="label"/>
-		<xsl:param name="class"/>
+    <xsl:param name="class"/>
     <xsl:param name="contents">
       <xsl:apply-templates/>
     </xsl:param>
@@ -3544,16 +3544,16 @@ or pipeline) parameterized.
         </xsl:call-template>
       </xsl:if>
       <div class="metadata-chunk">
-				<xsl:choose>
-					<xsl:when test="$class='metadata-keywords'">
-						<xsl:if test="normalize-space(string($contents))">
-							<xsl:copy-of select="exsl:node-set($contents)/*"/>
-						</xsl:if>
-					</xsl:when>
-					<xsl:otherwise>
-						<xsl:copy-of select="$contents"/>
-					</xsl:otherwise>
-				</xsl:choose>
+        <xsl:choose>
+          <xsl:when test="$class='metadata-keywords'">
+            <xsl:if test="normalize-space(string($contents))">
+              <xsl:copy-of select="exsl:node-set($contents)/*"/>
+            </xsl:if>
+          </xsl:when>
+          <xsl:otherwise>
+            <xsl:copy-of select="$contents"/>
+          </xsl:otherwise>
+        </xsl:choose>
       </div>
     </div>
   </xsl:template>
@@ -3754,17 +3754,17 @@ or pipeline) parameterized.
 <!-- Maps a structured date element to a string -->
 
   <xsl:template name="format-date">
-		<time>
-			<xsl:attribute name="datetime"><xsl:value-of select="year"/><xsl:if test="month">-<xsl:if test="string-length(month)=1">0</xsl:if><xsl:value-of select="month"/></xsl:if><xsl:if test="day">-<xsl:if test="string-length(day)=1">0</xsl:if><xsl:value-of select="day"/></xsl:if></xsl:attribute>
-			<!-- formats date in DD Month YYYY format -->
-			<!-- context must be 'date', with content model:
-					(((day?, month?) | season)?, year) -->
-			<xsl:for-each select="day|month|season">
-				<xsl:apply-templates select="." mode="map"/>
-				<xsl:text> </xsl:text>
-			</xsl:for-each>
-			<xsl:apply-templates select="year" mode="map"/>
-		</time>
+    <time>
+      <xsl:attribute name="datetime"><xsl:value-of select="year"/><xsl:if test="month">-<xsl:if test="string-length(month)=1">0</xsl:if><xsl:value-of select="month"/></xsl:if><xsl:if test="day">-<xsl:if test="string-length(day)=1">0</xsl:if><xsl:value-of select="day"/></xsl:if></xsl:attribute>
+      <!-- formats date in DD Month YYYY format -->
+      <!-- context must be 'date', with content model:
+          (((day?, month?) | season)?, year) -->
+      <xsl:for-each select="day|month|season">
+        <xsl:apply-templates select="." mode="map"/>
+        <xsl:text> </xsl:text>
+      </xsl:for-each>
+      <xsl:apply-templates select="year" mode="map"/>
+    </time>
   </xsl:template>
 
 

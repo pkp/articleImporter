@@ -114,7 +114,7 @@ new function () {
 		const link = Object.assign(document.createElement('link'), {
 				rel: 'stylesheet',
 				type: 'text/css',
-				href: '/css/lightbox.min.css'
+				href: '/styles/lightbox.min.css'
 		});
 		document.head.appendChild(link);
 		loadScript("/js/lightbox-plus-jquery.min.js").then(() => {

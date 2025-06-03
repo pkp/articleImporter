@@ -160,7 +160,8 @@ tex-math {
 }
 
 .warning {
-	color: red
+	color: red;
+	display: none;
 }
 
 .tex-math {

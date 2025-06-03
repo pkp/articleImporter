@@ -5,7 +5,7 @@ Plugin to import A++ and JATS articles up to OJS 3.5.0
 
 ### Import Files
 To get started you will need to request an export archive of your journal article metadata (metadata.xml) and galley files (fulltext.pdf) for all published articles.
-The plugin supports the following XML document types:
+The plugin has a generic format detection, as an example, the following XML document types are supported:
 - NLM: `<!DOCTYPE article SYSTEM "-//NLM//DTD Journal Archiving with OASIS Tables v3.0 20080202//EN" "http://dtd.nlm.nih.gov/archiving/3.0/archive-oasis-article3.dtd">`
 - JATS: `<!DOCTYPE article PUBLIC "-//EDP//DTD EDP Publishing JATS v1.0 20130606//EN" "JATS-edppublishing1.dtd">`
 - A++: `<!DOCTYPE Publisher PUBLIC "-//Springer-Verlag//DTD A++ V2.4//EN" "http://devel.springer.de/A++/V2.4/DTD/A++V2.4.dtd">`
@@ -34,7 +34,7 @@ The article folder must have only one XML file, with the `.xml` extension, and o
 
 A file named cover.tiff, cover.tif, cover.jpeg, cover.jpg or cover.png may be placed in the `issue#` folder, and will become the issue cover image if present.
 
-When importing JATS, the original metadata XML will be added as a production ready file, and dependent files extracted from the JATS (via `asset` or `graphic` elements) will be appended to the submission if the files exist in the folder.
+When importing JATS, the original metadata XML will be added as a production ready file, and dependent files extracted from the JATS (via `asset` or `graphic` elements) will be appended to the submission if the files exist in the folder. The plugin will also generate a HTML version of the JATS file and create a galley for it, unless you opt-out.
 
 Example structure:
 ```tree-view
@@ -99,13 +99,15 @@ Login to your server and execute the following in your OJS source directory.
 
 `php tools/importExport.php ArticleImporterPlugin journal username editorUsername defaultEmail importPath`
 
-where:
+Where:
 
 - `journal`: the journal into which the articles should be imported (use the OJS journal path)
 - `username`: the user to whom imported articles should be assigned; note: this user must have the Author role
 - `editorUsername`: the editor to whom imported articles should be assigned; note: this user must have the Journal Editor role and access to the Production stage
 - `defaultEmail`: assigned to article metadata when author email not provided in import XML
 - `importPath`: full filepath to import files (e.g. /home/user/articleImporter_xml/journalName)
+
+If you're importing JATS content and you don't want the plugin to generate a HTML galley out of it, include the flag `--no-html`.
 
 ## Limitations
 
@@ -117,4 +119,4 @@ Please note the import plugin is intended for journal content only and does not 
 
 ## Bugs and Enhancements
 
-We welcome bug reports and fixes via github Issues for this project. Feature enhancements may also be contributed via pull requests for inclusion into the repository.
+We welcome bug reports and fixes via GitHub issues for this project. Feature enhancements may also be contributed via pull requests for inclusion into the repository.
