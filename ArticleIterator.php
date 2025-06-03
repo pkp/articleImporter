@@ -13,9 +13,10 @@
 namespace APP\plugins\importexport\articleImporter;
 
 use Generator;
+use IteratorAggregate;
 use SplFileInfo;
 
-class ArticleIterator implements \IteratorAggregate
+class ArticleIterator implements IteratorAggregate
 {
     /** @var string The path */
     private string $path;

@@ -41,7 +41,7 @@ class ArticleImporterPlugin extends ImportExportPlugin
         set_time_limit(0);
 
         // Expects 5 non-empty arguments
-        if (count(array_filter($args, 'strlen')) != 5) {
+        if (count(array_filter($args, 'strlen')) < 5) {
             $this->usage($scriptName);
             return;
         }
@@ -57,7 +57,9 @@ class ArticleImporterPlugin extends ImportExportPlugin
                 $username,
                 $editorUsername,
                 $email,
-                $importPath
+                $importPath,
+                'Articles',
+                !in_array('--no-html', $args)
             );
 
             $this->_writeLine(__('plugins.importexport.articleImporter.importStart'));

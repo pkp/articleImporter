@@ -12,6 +12,7 @@
 
 namespace APP\plugins\importexport\articleImporter;
 
+use DirectoryIterator;
 use Generator;
 use SplFileInfo;
 

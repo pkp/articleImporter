@@ -555,6 +555,10 @@ trait PublicationParser
     {
         static $xslt;
 
+        if (!$this->getConfiguration()->shouldGenerateHtml()) {
+            return;
+        }
+
         $file = $this->getArticleVersion()->getSubmissionFile();
         if (!$file) {
             return;
