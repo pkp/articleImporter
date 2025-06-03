@@ -137,8 +137,8 @@ trait PublicationParser
 
         // Inserts the publication and updates the submission
         $publication = Services::get('publication')->add($publication, Application::get()->getRequest());
-        // Reload object with keywords (otherwise they will be cleared later on)
         $this->_processKeywords($publication);
+        // Reload object with keywords (otherwise they will be cleared later on)
         $publication = Services::get('publication')->get($publication->getId());
         $this->_processAuthors($publication);
         // Save primary author
@@ -167,7 +167,7 @@ trait PublicationParser
     {
         $citations = '';
         foreach ($this->select('/article/back/ref-list/ref') as $citation) {
-            $document = new \DOMDocument();
+            $document = new DOMDocument();
             /** @var DOMElement */
             foreach ($citation->getElementsByTagName('pub-id') as $pubId) {
                 $type = $pubId->attributes->getNamedItem('pub-id-type');
@@ -573,6 +573,10 @@ trait PublicationParser
     private function _processFullText(bool $overwrite = false): void
     {
         static $xslt;
+
+        if (!$this->getConfiguration()->shouldGenerateHtml()) {
+            return;
+        }
 
         $file = $this->getArticleVersion()->getSubmissionFile();
         if (!$file) {

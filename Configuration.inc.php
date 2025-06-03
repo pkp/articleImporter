@@ -53,6 +53,8 @@ class Configuration
     private $_coverFilename;
     /** @var bool use category as section */
     private $_canUseCategoryAsSection = true;
+    /** @var bool Generate HTML from JATS files */
+    private $_generateHtml = true;
 
     /**
      * Constructor
@@ -64,11 +66,11 @@ class Configuration
      * @param string $email Default email when the author email is not provided in the XML
      * @param string $importPath Base path where the "volume/issue/article" structure is kept
      */
-    public function __construct(array $parsers, string $contextPath, string $username, string $editorUsername, string $email, string $importPath, string $defaultSectionName = 'Articles')
+    public function __construct(array $parsers, string $contextPath, string $username, string $editorUsername, string $email, string $importPath, string $defaultSectionName = 'Articles', bool $generateHtml = true)
     {
         $this->_defaultSectionName = $defaultSectionName;
         $this->_parsers = $parsers;
-
+        $this->_generateHtml = $generateHtml;
         if (!$this->_context = Application::getContextDAO()->getByPath($contextPath)) {
             throw new InvalidArgumentException(__('plugins.importexport.articleImporter.unknownJournal', ['journal' => $contextPath]));
         }
@@ -237,5 +239,13 @@ class Configuration
     public function canUseCategoryAsSection(): bool
     {
         return $this->_canUseCategoryAsSection;
+    }
+
+    /**
+     * Retrieves whether the HTML should be generated
+     */
+    public function shouldGenerateHtml(): bool
+    {
+        return $this->_generateHtml;
     }
 }
