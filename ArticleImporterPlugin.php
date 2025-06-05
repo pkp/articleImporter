@@ -14,7 +14,6 @@ namespace APP\plugins\importexport\articleImporter;
 
 use APP\journal\JournalDAO;
 use APP\plugins\importexport\articleImporter\exceptions\ArticleSkippedException;
-
 use PKP\session\SessionManager;
 use PKP\core\Registry;
 use PKP\db\DAORegistry;

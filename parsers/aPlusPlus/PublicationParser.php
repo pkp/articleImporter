@@ -138,7 +138,7 @@ trait PublicationParser
         $this->setPublicationCoverImage($publication);
 
         // Inserts the publication and updates the submission's publication ID
-        Repo::publication()->dao->insert($publication);
+        Repo::publication()->add($publication);
 
         $this->_processKeywords($publication);
         // Reload object with keywords (otherwise they will be cleared later on)

@@ -12,7 +12,7 @@
 
 namespace APP\plugins\importexport\articleImporter;
 
-use DirectoryIterator;
+use APP\plugins\importexport\articleImporter\exceptions\ArticleSkippedException;
 use Generator;
 use SplFileInfo;
 
@@ -21,11 +21,11 @@ class ArticleEntry
     /** @var SplFileInfo The article directory */
     private SplFileInfo $_directory;
     /** @var int The issue's volume */
-    private int $_volume;
+    private int $_volume = 0;
     /** @var string The issue's number */
-    private int $_issue;
+    private int $_issue = 0;
     /** @var string The article's number */
-    private int $_article;
+    private int $_article = 0;
 
     /**
      * Constructor

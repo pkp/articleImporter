@@ -22,7 +22,7 @@ trait IssueParser
     private bool $_isIssueOwner = false;
 
     /** @var Issue Issue instance */
-    private Issue $_issue;
+    private ?Issue $_issue = null;
 
     /**
      * Rollbacks the operation

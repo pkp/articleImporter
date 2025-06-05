@@ -23,7 +23,7 @@ trait IssueParser
     /** @var bool True if the issue was created by this instance */
     private bool $_isIssueOwner = false;
     /** @var array{date:?DateTimeImmutable, title: ?string, section: ?string} Issue metadata */
-    private array $_issueMeta;
+    private ?array $_issueMeta = null;
 
     /** @var Issue Issue instance */
     private ?Issue $_issue = null;

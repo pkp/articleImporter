@@ -37,6 +37,7 @@ use PKP\facades\Locale;
 use PKP\file\TemporaryFile;
 use PKP\file\TemporaryFileDAO;
 use PKP\file\TemporaryFileManager;
+use PKP\i18n\LocaleConversion;
 use PKP\submission\GenreDAO;
 use Throwable;
 
@@ -243,9 +244,9 @@ abstract class BaseParser
         if ($locale && !Locale::isLocaleValid($locale)) {
             $locale = strtolower($locale);
             // Tries to convert from recognized formats
-            $iso3 = Locale::getIso3FromIso1($locale) ?: Locale::getIso3FromLocale($locale);
+            $iso3 = LocaleConversion:: getIso3FromIso1($locale) ?: LocaleConversion::getIso3FromLocale($locale);
             // If the language part of the locale is the same (ex. fr_FR and fr_CA), then gives preference to context's locale
-            $locale = $iso3 == Locale::getIso3FromLocale($this->_locale) ? $this->_locale : Locale::getLocaleFromIso3((string) $iso3);
+            $locale = $iso3 == LocaleConversion::getIso3FromLocale($this->_locale) ? $this->_locale : LocaleConversion::getLocaleFrom3LetterIso((string) $iso3);
         }
         $locale = $locale ?: $this->_locale;
         return $this->_usedLocales[$locale] = $locale;

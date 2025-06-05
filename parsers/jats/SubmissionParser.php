@@ -23,7 +23,7 @@ trait SubmissionParser
     /** @var Submission Submission instance */
     private ?Submission $_submission = null;
     /** @var bool True if the submission was created by this instance */
-    private bool $_isSubmissionOwner;
+    private bool $_isSubmissionOwner = false;
 
     /**
      * Rollbacks the operation
