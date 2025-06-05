@@ -26,7 +26,6 @@ use PKP\core\Core;
 use APP\core\Application;
 use PKP\i18n\LocaleConversion;
 use PKP\submission\Genre;
-use PKP\plugins\PluginRegistry;
 use PKP\submissionFile\SubmissionFile;
 use APP\facades\Repo;
 use PKP\controlledVocab\ControlledVocab;
