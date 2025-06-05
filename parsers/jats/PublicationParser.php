@@ -18,9 +18,9 @@ use DOMDocument;
 use DOMElement;
 use DOMXPath;
 use Exception;
+use Illuminate\Support\Str;
 use PKP\Services\PKPFileService;
 use APP\publication\Publication;
-use PKP\db\DAORegistry;
 use APP\core\Services;
 use PKP\core\Core;
 use APP\core\Application;
@@ -519,7 +519,7 @@ trait PublicationParser
 
             // Tries to find an entry in the cache
             $category = $cache[$this->getContextId()][$locale][$name] ?? null;
-            $path = Stringy::create($name)->toLowerCase()->dasherize()->regexReplace('[^a-z0-9\-\_.]', '') . '-' . substr($locale, 0, 2);
+            $path = preg_replace('[^a-z0-9\-\_.]', '', Str::of($name)->lower()->kebab()) . '-' . substr($locale, 0, 2);
             if (!$category) {
                 // Tries to find an entry in the database
                 $category = Repo::category()->getCollector()->filterByPaths([$path])->filterByContextIds([$this->getContextId()])->getMany()->first();

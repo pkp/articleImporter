@@ -17,7 +17,6 @@ use Exception;
 use PKP\core\Core;
 use PKP\Services\PKPFileService;
 use APP\publication\Publication;
-use PKP\db\DAORegistry;
 use APP\submission\Submission;
 use PKP\plugins\PluginRegistry;
 use APP\core\Application;
