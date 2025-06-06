@@ -12,34 +12,22 @@
 
 namespace APP\plugins\importexport\articleImporter\parsers\jats;
 
+use APP\plugins\importexport\articleImporter\EntityManager;
 use APP\section\Section;
 use APP\facades\Repo;
 
 trait SectionParser
 {
-    /** @var bool True if the section was created by this instance */
-    private bool $_isSectionOwner = false;
+    use EntityManager;
 
     /** @var Section Section instance */
     private ?Section $_section = null;
-
-    /**
-     * Rollbacks the operation
-     */
-    private function _rollbackSection(): void
-    {
-        if ($this->_isSectionOwner) {
-            Repo::section()->delete($this->_section);
-        }
-    }
 
     /**
      * Parses and retrieves the section, if a section with the same name exists, it will be retrieved
      */
     public function getSection(): Section
     {
-        static $cache = [];
-
         if ($this->_section) {
             return $this->_section;
         }
@@ -58,37 +46,25 @@ trait SectionParser
 
         $sectionName = $sectionName ?: $this->getIssueMeta()['section'] ?: $this->getConfiguration()->getDefaultSectionName();
         // Tries to find an entry in the cache
-        $this->_section = $cache[$this->getContextId()][$locale][$sectionName] ?? null;
-
-        if (!$this->_section) {
-            // Tries to find an entry in the database
-            $this->_section = Repo::section()->getCollector()->filterByTitles([$sectionName])->filterByContextIds([$this->getContextId()])->getMany()->first();
+        if ($this->_section = $this->getCachedSection($sectionName)) {
+            return $this->_section;
         }
 
-        if (!$this->_section) {
-            // Creates a new section
-            $section = Repo::section()->newDataObject();
-            $section->setData('contextId', $this->getContextId());
-            $section->setData('title', $sectionName, $locale);
-            $section->setData('abbrev', strtoupper(substr($sectionName, 0, 3)), $locale);
-            $section->setData('abstractsNotRequired', true);
-            $section->setData('metaIndexed', true);
-            $section->setData('metaReviewed', false);
-            $section->setData('policy', __('section.default.policy'), $this->getLocale());
-            $section->setData('editorRestricted', true);
-            $section->setData('hideTitle', false);
-            $section->setData('hideAuthor', false);
-
-            Repo::section()->add($section);
-            $this->_section = $section;
-        }
-
-        // Includes the section into the issue's custom order
-        $this->includeSection($this->_section);
-
-        // Caches the entry
-        $cache[$this->getContextId()][$locale][$sectionName] = $this->_section;
-
-        return $this->_section;
+        // Creates a new section
+        $section = Repo::section()->newDataObject();
+        $section->setData('contextId', $this->getContextId());
+        $section->setData('title', $sectionName, $locale);
+        $section->setData('abbrev', strtoupper(substr($sectionName, 0, 3)), $locale);
+        $section->setData('abstractsNotRequired', true);
+        $section->setData('metaIndexed', true);
+        $section->setData('metaReviewed', false);
+        $section->setData('policy', __('section.default.policy'), $this->getLocale());
+        $section->setData('editorRestricted', true);
+        $section->setData('hideTitle', false);
+        $section->setData('hideAuthor', false);
+        Repo::section()->add($section);
+        $this->trackEntity($section);
+        $this->setCachedSection($sectionName, $section);
+        return $this->_section = $section;
     }
 }

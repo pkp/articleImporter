@@ -19,7 +19,6 @@ use APP\plugins\importexport\articleImporter\exceptions\NoSuitableParserExceptio
 use Exception;
 use FilesystemIterator;
 use SplFileInfo;
-use Submission;
 
 class ArticleVersion
 {
@@ -130,12 +129,12 @@ class ArticleVersion
      *
      * @throws NoSuitableParserException Throws if no parser could understand the format
      */
-    public function process(Configuration $configuration, ?Submission $submission = null): BaseParser
+    public function process(Configuration $configuration): BaseParser
     {
         /** @var BaseParser */
         foreach ($configuration->getParsers() as $parser) {
             try {
-                $instance = new $parser($configuration, $this, $submission);
+                $instance = new $parser($configuration, $this);
                 $instance->execute();
                 return $instance;
             } catch (InvalidDocTypeException $e) {

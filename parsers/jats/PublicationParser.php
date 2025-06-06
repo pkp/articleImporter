@@ -12,6 +12,7 @@
 
 namespace APP\plugins\importexport\articleImporter\parsers\jats;
 
+use APP\plugins\importexport\articleImporter\EntityManager;
 use APP\submission\Submission;
 use DateTimeImmutable;
 use DOMDocument;
@@ -35,6 +36,8 @@ use XSLTProcessor;
 
 trait PublicationParser
 {
+    use EntityManager;
+
     /**
      * Parse, import and retrieve the publication
      */
@@ -251,7 +254,7 @@ trait PublicationParser
     {
         $filename = basename($filePath);
         $fileType = pathinfo($filePath, PATHINFO_EXTENSION);
-        $genreId = $this->_getGenreId($this->getContextId(), $fileType);
+        $genreId = $this->getCachedGenre($fileType)->getId();
         /** @var PKPFileService $fileService */
         $fileService = Services::get('file');
 
@@ -510,21 +513,14 @@ trait PublicationParser
      */
     private function _processCategories(Publication $publication): void
     {
-        static $cache = [];
         $categoryIds = [];
         foreach ($this->select('front/article-meta/article-categories/subj-group') as $node) {
-            $locale = $this->getLocale();
             $name = $this->selectText('subject', $node);
             $locale = $this->getLocale($node->getAttribute('xml:lang'));
 
             // Tries to find an entry in the cache
-            $category = $cache[$this->getContextId()][$locale][$name] ?? null;
             $path = preg_replace('[^a-z0-9\-\_.]', '', Str::of($name)->lower()->kebab()) . '-' . substr($locale, 0, 2);
-            if (!$category) {
-                // Tries to find an entry in the database
-                $category = Repo::category()->getCollector()->filterByPaths([$path])->filterByContextIds([$this->getContextId()])->getMany()->first();
-            }
-
+            $category = $this->getCachedCategory($path);
             if (!$category) {
                 // Creates a new category
                 $category = Repo::category()->newDataObject();
@@ -536,10 +532,10 @@ trait PublicationParser
 
                 $categoryId = Repo::category()->add($category);
                 $category->setId($categoryId);
+                $this->trackEntity($category);
+                $this->setCachedCategory($path, $category);
             }
 
-            // Caches the entry
-            $cache[$this->getContextId()][$locale][$name] = $category;
             $categoryIds[] = $category->getId();
         }
         $publication->setData('categoryIds', $categoryIds);

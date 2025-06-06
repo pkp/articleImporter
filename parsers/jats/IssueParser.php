@@ -13,6 +13,7 @@
 namespace APP\plugins\importexport\articleImporter\parsers\jats;
 
 use APP\issue\Issue;
+use APP\plugins\importexport\articleImporter\EntityManager;
 use DateTimeImmutable;
 use DOMDocument;
 use DOMXPath;
@@ -20,23 +21,13 @@ use APP\facades\Repo;
 
 trait IssueParser
 {
-    /** @var bool True if the issue was created by this instance */
-    private bool $_isIssueOwner = false;
+    use EntityManager;
+
     /** @var array{date:?DateTimeImmutable, title: ?string, section: ?string} Issue metadata */
     private ?array $_issueMeta = null;
 
     /** @var Issue Issue instance */
     private ?Issue $_issue = null;
-
-    /**
-     * Rollbacks the operation
-     */
-    private function _rollbackIssue(): void
-    {
-        if ($this->_isIssueOwner) {
-            Repo::issue()->delete($this->_issue);
-        }
-    }
 
     /**
      * Get issue meta
@@ -79,8 +70,6 @@ trait IssueParser
      */
     public function getIssue(): Issue
     {
-        static $cache = [];
-
         if ($this->_issue) {
             return $this->_issue;
         }
@@ -88,50 +77,34 @@ trait IssueParser
         $entry = $this->getArticleEntry();
         $volume = $this->selectText('front/article-meta/volume') ?: $entry->getVolume();
         $issueNumber = $this->selectText('front/article-meta/issue') ?: $entry->getIssue();
-        if ($issue = $cache[$this->getContextId()][$volume][$issueNumber] ?? null) {
-            return $this->_issue = $issue;
+        if ($this->_issue = $this->getCachedIssue($volume, $issueNumber)) {
+            return $this->_issue;
         }
 
-        // If this issue exists, return it
-        $issues = Repo::issue()->getCollector()
-            ->filterByContextIds([$this->getContextId()])
-            ->filterByVolumes([$volume])
-            ->filterByNumbers([$issueNumber])
-            ->getMany();
-        $this->_issue = $issues->first();
-
-        if (!$this->_issue) {
-            $locale = $this->getLocale();
-
-            // Create a new issue
-            $issue = Repo::issue()->newDataObject();
-
-            $node = $this->selectFirst("front/article-meta/pub-date[@pub-type='collection']");
-            $publicationDate = $this->getIssueMeta()['date'] ?? $this->getDateFromNode($node) ?? $this->getPublicationDate();
-
-            $issue->setData('title', $this->getIssueMeta()['title'], $locale);
-            $issue->setData('journalId', $this->getContextId());
-            $issue->setData('volume', $volume);
-            $issue->setData('number', $issueNumber);
-            $issue->setData('year', (int) $publicationDate->format('Y'));
-            $issue->setData('published', true);
-            $issue->setData('current', false);
-            $issue->setData('datePublished', $publicationDate->format(static::DATETIME_FORMAT));
-            $issue->setData('accessStatus', Issue::ISSUE_ACCESS_OPEN);
-            $issue->setData('showVolume', true);
-            $issue->setData('showNumber', true);
-            $issue->setData('showYear', true);
-            $issue->setData('showTitle', true);
-            $issue->stampModified();
-            Repo::issue()->add($issue);
-
-            $this->setIssueCoverImage($issue);
-
-            $this->_isIssueOwner = true;
-            $this->_issue = $issue;
-        }
-
-        return $cache[$this->getContextId()][$volume][$issueNumber] = $this->_issue;
+        $locale = $this->getLocale();
+        // Create a new issue
+        $issue = Repo::issue()->newDataObject();
+        $node = $this->selectFirst("front/article-meta/pub-date[@pub-type='collection']");
+        $publicationDate = $this->getIssueMeta()['date'] ?? $this->getDateFromNode($node) ?? $this->getPublicationDate();
+        $issue->setData('title', $this->getIssueMeta()['title'], $locale);
+        $issue->setData('journalId', $this->getContextId());
+        $issue->setData('volume', $volume);
+        $issue->setData('number', $issueNumber);
+        $issue->setData('year', (int) $publicationDate->format('Y'));
+        $issue->setData('published', true);
+        $issue->setData('current', false);
+        $issue->setData('datePublished', $publicationDate->format(static::DATETIME_FORMAT));
+        $issue->setData('accessStatus', Issue::ISSUE_ACCESS_OPEN);
+        $issue->setData('showVolume', true);
+        $issue->setData('showNumber', true);
+        $issue->setData('showYear', true);
+        $issue->setData('showTitle', true);
+        $issue->stampModified();
+        Repo::issue()->add($issue);
+        $this->setIssueCoverImage($issue);
+        $this->trackEntity($issue);
+        $this->setCachedIssue($volume, $issueNumber, $issue);
+        return $this->_issue = $issue;
     }
 
     /**
