@@ -38,11 +38,12 @@ use PKP\file\TemporaryFile;
 use PKP\file\TemporaryFileDAO;
 use PKP\file\TemporaryFileManager;
 use PKP\i18n\LocaleConversion;
-use PKP\submission\GenreDAO;
 use Throwable;
 
 abstract class BaseParser
 {
+    use EntityManager;
+
     public const DATETIME_FORMAT = 'Y-m-d H:i:s';
 
     /** @var Configuration Configuration */
@@ -57,24 +58,19 @@ abstract class BaseParser
     private int $_contextId;
     /** @var string Default locale, grabbed from the submission or the context's primary locale */
     private string $_locale;
-    /** @var int[] cache of genres by context id and extension */
-    private array $_cachedGenres;
     /** @var string[] */
     private array $_usedLocales = [];
 
     /**
      * Constructor
      */
-    public function __construct(Configuration $configuration, ArticleVersion $version, ?Submission $submission = null)
+    public function __construct(Configuration $configuration, ArticleVersion $version)
     {
         $this->_configuration = $configuration;
         $this->_version = $version;
         $context = $this->_configuration->getContext();
         $this->_contextId = $context->getId();
         $this->_locale = $context->getPrimaryLocale();
-        if ($submission) {
-            $this->setSubmission($submission);
-        }
     }
 
     /**
@@ -93,11 +89,6 @@ abstract class BaseParser
     abstract public function getSubmission(): Submission;
 
     /**
-     * Sets the submission
-     */
-    abstract public function setSubmission(Submission $submission): void;
-
-    /**
      * Parses the section
      */
     abstract public function getSection(): Section;
@@ -110,14 +101,17 @@ abstract class BaseParser
     abstract public function getPublicIds(): array;
 
     /**
-     * Rollbacks the process
-     */
-    abstract public function rollback(): void;
-
-    /**
      * Retrieves whether the parser can deal with the underlying document
      */
     abstract public function canParse(): bool;
+
+    /**
+     * Rollbacks the process
+     */
+    public function rollback(): void
+    {
+        $this->deleteTrackedEntities();
+    }
 
     /**
      * Executes the parser
@@ -282,24 +276,6 @@ abstract class BaseParser
     }
 
     /**
-     * Includes a section into the issue custom order
-     */
-    public function includeSection(Section $section): void
-    {
-        static $cache = [];
-
-        // If the section wasn't included into the issue yet
-        if (!isset($cache[$this->getIssue()->getId()][$section->getId()])) {
-            // Adds it to the list
-            $cache[$this->getIssue()->getId()][$section->getId()] = true;
-            // Checks whether the section is already present in the issue
-            if (!Repo::section()->getCustomSectionOrder($this->getIssue()->getId(), $section->getId())) {
-                Repo::section()->upsertCustomSectionOrder($this->getIssue()->getId(), $section->getId(), count($cache[$this->getIssue()->getId()]));
-            }
-        }
-    }
-
-    /**
      * Manually evaluates the textContent of the node with the help of a transformation callback
      *
      * @param callable $callback The callback will receive two arguments, the current node being parsed and the already transformed textContent of it
@@ -317,33 +293,6 @@ abstract class BaseParser
             $data .= $this->getTextContent($child, $callback);
         }
         return $callback($node, $data);
-    }
-
-    /**
-     * Find a Genre ID for a context and extension
-     *
-     * @param $contextId
-     * @param $extension
-     *
-     * @return int
-     */
-    protected function _getGenreId(int $contextId, string $extension)
-    {
-        if (isset($this->_cachedGenres[$contextId][$extension])) {
-            return $this->_cachedGenres[$contextId][$extension];
-        }
-
-        /** @var GenreDAO */
-        $genreDao = DAORegistry::getDAO('GenreDAO');
-        if (in_array($extension, $this->getConfiguration()->getImageExtensions())) {
-            $genre = $genreDao->getByKey('IMAGE', $contextId);
-            $genreId = $genre->getId();
-        } else {
-            $genre = $genreDao->getByKey('MULTIMEDIA', $contextId);
-            $genreId = $genre->getId();
-        }
-        $this->_cachedGenres[$contextId][$extension] = $genreId;
-        return $genreId;
     }
 
     /**
@@ -367,7 +316,7 @@ abstract class BaseParser
     /**
      * Looks in $issueFolder for a cover image, and applies it to $issue if found
      */
-    public function setIssueCoverImage(Issue $issue)
+    public function setIssueCoverImage(Issue $issue): void
     {
         $issueCover = null;
         $issueFolder = (string) $this->getArticleVersion()->getPath();
