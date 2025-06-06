@@ -34,16 +34,6 @@ class Parser extends BaseParser
     }
 
     /**
-     * Rollbacks the process
-     */
-    public function rollback(): void
-    {
-        $this->_rollbackSection();
-        $this->_rollbackIssue();
-        $this->_rollbackSubmission();
-    }
-
-    /**
      * Given a nodes with month/year/day, tries to form a valid date string and retrieve a DateTimeImmutable
      */
     public function getDateFromNode(?DOMNode $node): ?DateTimeImmutable
