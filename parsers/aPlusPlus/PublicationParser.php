@@ -12,9 +12,11 @@
 
 namespace APP\plugins\importexport\articleImporter\parsers\aPlusPlus;
 
+use APP\publication\enums\VersionStage;
 use DateTimeImmutable;
 use Exception;
 use PKP\core\Core;
+use PKP\publication\helpers\PublicationVersionInfo;
 use PKP\Services\PKPFileService;
 use APP\publication\Publication;
 use APP\submission\Submission;
@@ -41,6 +43,7 @@ trait PublicationParser
         $publication->setData('submissionId', $this->getSubmission()->getId());
         $publication->setData('status', Submission::STATUS_PUBLISHED);
         $publication->setData('version', $version);
+        $publication->setVersion(new PublicationVersionInfo(VersionStage::VERSION_OF_RECORD, $version, 0));
         $publication->setData('seq', $version);
         $publication->setData('accessStatus', $this->_getAccessStatus());
         $publication->setData('datePublished', $publicationDate->format(static::DATETIME_FORMAT));

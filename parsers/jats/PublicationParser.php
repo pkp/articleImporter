@@ -13,6 +13,7 @@
 namespace APP\plugins\importexport\articleImporter\parsers\jats;
 
 use APP\plugins\importexport\articleImporter\EntityManager;
+use APP\publication\enums\VersionStage;
 use APP\submission\Submission;
 use DateTimeImmutable;
 use DOMDocument;
@@ -20,6 +21,7 @@ use DOMElement;
 use DOMXPath;
 use Exception;
 use Illuminate\Support\Str;
+use PKP\publication\helpers\PublicationVersionInfo;
 use PKP\Services\PKPFileService;
 use APP\publication\Publication;
 use APP\core\Services;
@@ -31,7 +33,6 @@ use PKP\submissionFile\SubmissionFile;
 use APP\facades\Repo;
 use PKP\controlledVocab\ControlledVocab;
 use SplFileInfo;
-use Stringy\Stringy;
 use XSLTProcessor;
 
 trait PublicationParser
@@ -50,7 +51,7 @@ trait PublicationParser
         $publication = Repo::publication()->newDataObject();
         $publication->setData('submissionId', $this->getSubmission()->getId());
         $publication->setData('status', Submission::STATUS_PUBLISHED);
-        $publication->setData('version', $version);
+        $publication->setVersion(new PublicationVersionInfo(VersionStage::VERSION_OF_RECORD, $version, 0));
         $publication->setData('seq', $version);
         $publication->setData('accessStatus', Submission::ARTICLE_ACCESS_OPEN);
         $publication->setData('datePublished', $publicationDate->format(static::DATETIME_FORMAT));
@@ -687,7 +688,7 @@ trait PublicationParser
             if ($output === false) {
                 throw new Exception("Failed to create HTML file from JATS XML: \n" . print_r(libxml_get_errors(), true));
             }
-            $path = $metadata->getPathInfo() . '/' . $metadata->getBasename($metadata->getExtension()) . (count($langs) > 1 ? "-{$lang}" : '') . 'html';
+            $path = $metadata->getPathInfo() . '/' . $metadata->getBasename($metadata->getExtension()) . "{$lang}.html";
 
             file_put_contents($path, $output);
         }
