@@ -20,28 +20,16 @@ use DOMDocument;
 use DOMXPath;
 use Issue;
 use IssueDAO;
-use Services;
+use PKP\Plugins\ImportExport\ArticleImporter\EntityManager;
 
 trait IssueParser
 {
-    /** @var bool True if the issue was created by this instance */
-    private $_isIssueOwner;
+    use EntityManager;
+
     /** @var Issue Issue instance */
     private $_issue;
     /** @var array{date:?DateTimeImmutable, title: ?string, section: ?string} Issue metadata */
     private $_issueMeta;
-
-    /**
-     * Rollbacks the operation
-     */
-    private function _rollbackIssue(): void
-    {
-        if ($this->_isIssueOwner) {
-            /** @var IssueDAO */
-            $issueDao = DAORegistry::getDAO('IssueDAO');
-            $issueDao->deleteObject($this->_issue);
-        }
-    }
 
     /**
      * Get issue meta
@@ -84,8 +72,6 @@ trait IssueParser
      */
     public function getIssue(): Issue
     {
-        static $cache = [];
-
         if ($this->_issue) {
             return $this->_issue;
         }
@@ -93,52 +79,39 @@ trait IssueParser
         $entry = $this->getArticleEntry();
         $volume = $this->selectText('front/article-meta/volume') ?: $entry->getVolume();
         $issueNumber = $this->selectText('front/article-meta/issue') ?: $entry->getIssue();
-        if ($issue = $cache[$this->getContextId()][$volume][$issueNumber] ?? null) {
-            return $this->_issue = $issue;
+        if ($this->_issue = $this->getCachedIssue($volume, $issueNumber)) {
+            return $this->_issue;
         }
 
-        // If this issue exists, return it
-        $issues = Services::get('issue')->getMany([
-            'contextId' => $this->getContextId(),
-            'volumes' => $volume,
-            'numbers' => $issueNumber
-        ]);
-        $this->_issue = $issues->current();
+        $locale = $this->getLocale();
 
-        if (!$this->_issue) {
-            $locale = $this->getLocale();
+        // Create a new issue
+        /** @var IssueDAO */
+        $issueDao = DAORegistry::getDAO('IssueDAO');
+        $issue = $issueDao->newDataObject();
 
-            // Create a new issue
-            /** @var IssueDAO */
-            $issueDao = DAORegistry::getDAO('IssueDAO');
-            $issue = $issueDao->newDataObject();
+        $node = $this->selectFirst("front/article-meta/pub-date[@pub-type='collection']");
+        $publicationDate = $this->getIssueMeta()['date'] ?? $this->getDateFromNode($node) ?? $this->getPublicationDate();
 
-            $node = $this->selectFirst("front/article-meta/pub-date[@pub-type='collection']");
-            $publicationDate = $this->getIssueMeta()['date'] ?? $this->getDateFromNode($node) ?? $this->getPublicationDate();
-
-            $issue->setData('title', $this->getIssueMeta()['title'], $locale);
-            $issue->setData('journalId', $this->getContextId());
-            $issue->setData('volume', $volume);
-            $issue->setData('number', $issueNumber);
-            $issue->setData('year', (int) $publicationDate->format('Y'));
-            $issue->setData('published', true);
-            $issue->setData('current', false);
-            $issue->setData('datePublished', $publicationDate->format(static::DATETIME_FORMAT));
-            $issue->setData('accessStatus', ISSUE_ACCESS_OPEN);
-            $issue->setData('showVolume', true);
-            $issue->setData('showNumber', true);
-            $issue->setData('showYear', true);
-            $issue->setData('showTitle', true);
-            $issue->stampModified();
-            $issueDao->insertObject($issue);
-
-            $this->setIssueCoverImage($issue);
-
-            $this->_isIssueOwner = true;
-            $this->_issue = $issue;
-        }
-
-        return $cache[$this->getContextId()][$volume][$issueNumber] = $this->_issue;
+        $issue->setData('title', $this->getIssueMeta()['title'], $locale);
+        $issue->setData('journalId', $this->getContextId());
+        $issue->setData('volume', $volume);
+        $issue->setData('number', $issueNumber);
+        $issue->setData('year', (int) $publicationDate->format('Y'));
+        $issue->setData('published', true);
+        $issue->setData('current', false);
+        $issue->setData('datePublished', $publicationDate->format(static::DATETIME_FORMAT));
+        $issue->setData('accessStatus', ISSUE_ACCESS_OPEN);
+        $issue->setData('showVolume', true);
+        $issue->setData('showNumber', true);
+        $issue->setData('showYear', true);
+        $issue->setData('showTitle', true);
+        $issue->stampModified();
+        $issueDao->insertObject($issue);
+        $this->setIssueCoverImage($issue);
+        $this->trackEntity($issue);
+        $this->setCachedIssue($volume, $issueNumber, $issue);
+        return $this->_issue = $issue;
     }
 
     /**

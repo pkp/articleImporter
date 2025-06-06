@@ -25,6 +25,7 @@ use DOMDocument;
 use DOMElement;
 use DOMXPath;
 use Exception;
+use PKP\Plugins\ImportExport\ArticleImporter\EntityManager;
 use PKPLocale;
 use PKP\Services\PKPFileService;
 use Publication;
@@ -39,6 +40,8 @@ use XSLTProcessor;
 
 trait PublicationParser
 {
+    use EntityManager;
+
     /**
      * Parse, import and retrieve the publication
      */
@@ -248,7 +251,7 @@ trait PublicationParser
     {
         $filename = basename($filePath);
         $fileType = pathinfo($filePath, PATHINFO_EXTENSION);
-        $genreId = $this->_getGenreId($this->getContextId(), $fileType);
+        $genreId = $this->getCachedGenre($fileType)->getId();
         /** @var SubmissionFileService $submissionFileService */
         $submissionFileService = Services::get('submissionFile');
         /** @var PKPFileService $fileService */
@@ -532,24 +535,17 @@ trait PublicationParser
      */
     private function _processCategories(Publication $publication): void
     {
-        static $cache = [];
         $categoryIds = [];
         foreach ($this->select('front/article-meta/article-categories/subj-group') as $node) {
-            $locale = $this->getLocale();
             $name = $this->selectText('subject', $node);
             $locale = $this->getLocale($node->getAttribute('xml:lang'));
 
             // Tries to find an entry in the cache
-            $category = $cache[$this->getContextId()][$locale][$name] ?? null;
-            if (!$category) {
-                // Tries to find an entry in the database
-                /** @var CategoryDAO */
-                $categoryDao = DAORegistry::getDAO('CategoryDAO');
-                $category = $categoryDao->getByTitle($name, $this->getContextId(), $locale);
-            }
-
+            $category = $this->getCachedCategory($name, $locale);
             if (!$category) {
                 // Creates a new category
+                /** @var CategoryDAO */
+                $categoryDao = DAORegistry::getDAO('CategoryDAO');
                 $category = $categoryDao->newDataObject();
                 $category->setData('contextId', $this->getContextId());
                 $category->setData('title', $name, $locale);
@@ -558,10 +554,10 @@ trait PublicationParser
                 $category->setData('sortOption', 'datePublished-2');
 
                 $categoryDao->insertObject($category);
+                $this->trackEntity($category);
+                $this->setCachedCategory($name, $locale, $category);
             }
 
-            // Caches the entry
-            $cache[$this->getContextId()][$locale][$name] = $category;
             $categoryIds[] = $category->getId();
         }
         $publication->setData('categoryIds', $categoryIds);

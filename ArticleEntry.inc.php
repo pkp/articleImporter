@@ -85,14 +85,13 @@ class ArticleEntry
     public function process(Configuration $configuration): void
     {
         $processed = false;
-        $submission = null;
         foreach ($this->getVersions() as $version) {
-            $submission = $version->process($configuration, $submission)->getSubmission();
+            $version->process($configuration);
             $processed = true;
         }
 
         if (!$processed) {
-            throw new ArticleSkippedException('No versions were found');
+            throw new ArticleSkippedException('No versions were processed');
         }
     }
 }

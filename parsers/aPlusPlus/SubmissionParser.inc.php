@@ -24,30 +24,13 @@ use SubmissionDAO;
 
 trait SubmissionParser
 {
-    /** @var Submission Submission instance */
-    private $_submission;
-    /** @var bool True if the submission was created by this instance */
-    private $_isSubmissionOwner;
-
-    /**
-     * Rollbacks the operation
-     */
-    private function _rollbackSubmission(): void
-    {
-        if ($this->_isSubmissionOwner && $this->_submission) {
-            /** @var SubmissionDAO */
-            $submissionDao = DAORegistry::getDAO('SubmissionDAO');
-            $submissionDao->deleteObject($this->_submission);
-        }
-    }
-
     /**
      * Parses and retrieves the submission
      */
     public function getSubmission(): Submission
     {
-        if ($this->_submission) {
-            return $this->_submission;
+        if ($submission = $this->getCachedSubmission()) {
+            return $submission;
         }
 
         /** @var SubmissionDAO */
@@ -60,23 +43,12 @@ trait SubmissionParser
         $article->setData('sectionId', $this->getSection()->getId());
         $date = $this->getDateFromNode($this->selectFirst('Journal/Volume/Issue/Article/ArticleInfo/ArticleHistory/RegistrationDate')) ?: $this->getPublicationDate()->add(new DateInterval('P1D'));
         $article->setData('dateSubmitted', $date->format(static::DATETIME_FORMAT));
-
         // Creates the submission
         $this->_submission = Services::get('submission')->add($article, Application::get()->getRequest());
-        $this->_isSubmissionOwner = true;
-
+        $this->trackEntity($submission);
+        $this->setCachedSubmission($submission);
         $this->_assignEditor();
-
         return $this->_submission;
-    }
-
-    /**
-     * Sets the submission
-     */
-    public function setSubmission(Submission $submission): void
-    {
-        $this->_submission = $submission;
-        $this->_isSubmissionOwner = false;
     }
 
     /**

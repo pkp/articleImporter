@@ -15,7 +15,6 @@
 namespace PKP\Plugins\ImportExport\ArticleImporter\Parsers\APlusPlus;
 
 use DateTimeImmutable;
-use DOMImplementation;
 use DOMNode;
 use PKP\Plugins\ImportExport\ArticleImporter\BaseParser;
 
@@ -34,16 +33,6 @@ class Parser extends BaseParser
     public function canParse(): bool
     {
         return (bool) $this->selectFirst('Journal/Volume/Issue/Article/ArticleInfo/ArticleTitle');
-    }
-
-    /**
-     * Rollbacks the process
-     */
-    public function rollback(): void
-    {
-        $this->_rollbackSection();
-        $this->_rollbackIssue();
-        $this->_rollbackSubmission();
     }
 
     /**
