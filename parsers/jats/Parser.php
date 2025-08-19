@@ -66,35 +66,160 @@ class Parser extends BaseParser
     /**
      * Convert JATS tags to HTML
      */
-    public static function fixJatsTags(DOMElement $node): DOMElement
+    public static function convertJatsToHtml(?DOMElement $node): ?DOMElement
     {
-        $replace = function (string $tagName, string $newTagName, callable $configure = null) use ($node): void {
-            /** @var DOMElement */
-            foreach ($node->getElementsByTagName($tagName) as $childNode) {
-                $childNodes = iterator_to_array($childNode->childNodes);
-                $newNode = new DOMElement($newTagName);
-                $childNode->parentNode->replaceChild($newNode, $childNode);
-                $configure && $configure($newNode, $childNode);
-                foreach ($childNodes as $childNode) {
-                    $newNode->appendChild($childNode);
-                }
+        if (!$node) {
+            return null;
+        }
+
+        $document = $node->ownerDocument;
+        /** @var DOMNode $current */
+        foreach (iterator_to_array($node->getElementsByTagName('*')) as $current) {
+            $new = null;
+            if ($current->nodeType === XML_TEXT_NODE && (filter_var($textContent = trim($current->textContent), FILTER_VALIDATE_EMAIL) || filter_var($textContent, FILTER_VALIDATE_URL))) {
+                $new = $document->createElement('a', $textContent);
+                $new->setAttribute('href', $textContent);
             }
-        };
-        $replace('bold', 'b');
-        $replace('italic', 'i');
-        $replace('strike', 's');
-        $replace('underline', 'u');
-        $replace('list', 'ul');
-        $replace('list-item', 'li');
-        $replace('sc', 'span', function (DOMElement $new, DOMElement $old) {
-            $new->setAttribute('style', 'font-variant: small-caps');
-        });
-        $replace('email', 'a', function (DOMElement $new, DOMElement $old) {
-            $new->setAttribute('href', $old->textContent);
-        });
-        $replace('ext-link', 'a', function (DOMElement $new, DOMElement $old) {
-            $new->setAttribute('href', $old->getAttributeNS('http://www.w3.org/1999/xlink', 'href') ?: $old->getAttribute('href'));
-        });
+
+            /** @var DOMElement $current */
+            switch ($current->tagName ?? null) {
+                case 'p':
+                case 'sub':
+                case 'sup':
+                    break;
+                case 'bold':
+                    $new = $document->createElement('b');
+                    break;
+                case 'italic':
+                    $new = $document->createElement('i');
+                    break;
+                case 'strike':
+                    $new = $document->createElement('s');
+                    break;
+                case 'underline':
+                    $new = $document->createElement('u');
+                    break;
+                case 'list-item':
+                    $new = $document->createElement('li');
+                    break;
+                case 'elocation-id':
+                    $new = $document->createElement('span');
+                    $new->setAttribute('hidden', '');
+                    break;
+                case 'overline':
+                    $new = $document->createElement('span');
+                    $new->setAttribute('style', 'text-decoration: overline');
+                    break;
+                case 'sc':
+                    $new = $document->createElement('span');
+                    $new->setAttribute('style', 'font-variant: small-caps');
+                    break;
+                case 'monospace':
+                    $new = $document->createElement('span');
+                    $new->setAttribute('style', 'font-family: monospace');
+                    break;
+                case 'ext-link':
+                    $new = $document->createElement('a');
+                    $new->setAttribute('href', $current->getAttributeNS('http://www.w3.org/1999/xlink', 'href') ?: $current->getAttribute('href'));
+                    break;
+                case 'email':
+                    $new = $document->createElement('a');
+                    $new->setAttribute('href', $current->getAttributeNS('http://www.w3.org/1999/xlink', 'href') ?: $current->getAttribute('href'));
+                    break;
+                case 'styled-content':
+                    $new = $document->createElement('span');
+                    $new->setAttribute('style', $current->getAttribute('style'));
+                    break;
+                case 'list':
+                    $new = $document->createElement('ul');
+                    if ($current->getAttribute('list-type') === 'order') {
+                        $new = new DOMElement('ol');
+                    }
+
+                    break;
+                case 'pub-id':
+                    $new = $document->createElement('a');
+                    $type = $current->attributes->getNamedItem('pub-id-type');
+                    $baseUrls = [
+                        'doi' => 'https://doi.org/',
+                        'pmid' => 'https://pubmed.ncbi.nlm.nih.gov/',
+                        'pmcid' => 'https://www.ncbi.nlm.nih.gov/pmc/articles/'
+                    ];
+                    $url = $baseUrls[$type->textContent] ?? '';
+                    if (!$url) {
+                        error_log('Unknown pub-id type');
+                        $new->setAttribute('hidden', '');
+                        break;
+                    }
+
+                    $url .= str_replace($url, '', $current->textContent);
+                    $new->setAttribute('href', $url);
+                    $current->textContent = $url;
+                    break;
+                case 'etal':
+                    if (!$current->textContent) {
+                        $current->appendChild($document->createElement('i'))->textContent = 'et al.';
+                    }
+
+                    $next = $current->nextSibling;
+                    if ($next && trim($next->textContent) === '') {
+                        $current->parentNode->removeChild($next);
+                    }
+
+                    break;
+                case 'volume':
+                    if ($current->firstChild === $current->lastChild) {
+                        $current->appendChild($document->createElement('b'))->textContent = $current->textContent;
+                        $current->removeChild($current->firstChild);
+                    }
+                    $current->parentNode->insertBefore($document->createTextNode(' '), $current);
+
+                    break;
+                case 'person-group':
+                    $new = $document->createElement('span');
+                    break;
+                case 'name':
+                    // Add commas to the end of names
+                    $nextElement = $current->nextElementSibling;
+                    if ($nextElement && in_array($nextElement->tagName, ['name', 'etal'])) {
+                        for ($sibling = $current; ($sibling = $sibling->nextSibling) !== $nextElement && strpos($sibling->textContent, ',') === false;);
+
+                        if ($sibling === $nextElement) {
+                            $current->insertBefore($document->createTextNode(', '), $current->lastChild === $current->lastElementChild ? null : $current->lastChild);
+                        }
+                    }
+
+                    // Remove empty spaces from the last element
+                    if ($current->parentNode->lastElementChild === $current) {
+                        if (trim($current->lastChild->textContent) === '') {
+                            $current->removeChild($current->lastChild);
+                        }
+
+                        $next = $current->nextSibling;
+                        if ($next && trim($next->textContent) === '') {
+                            $current->parentNode->removeChild($next);
+                        }
+                    }
+
+                    break;
+                case 'fpage':
+                    $current->parentNode->insertBefore($document->createTextNode(' '), $current);
+                    break;
+                case 'article-title':
+                    $current->appendChild($document->createTextNode(' '));
+                    break;
+                default:
+                    // Default behavior is to drop the unknown tag and leave its text
+                    $new = $document->createDocumentFragment();
+            }
+
+            if ($new) {
+                foreach (iterator_to_array($current->childNodes) as $child) {
+                    $new->appendChild($child);
+                }
+                $current->parentNode->replaceChild($new, $current);
+            }
+        }
 
         return $node;
     }
