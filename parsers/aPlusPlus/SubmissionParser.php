@@ -2,8 +2,8 @@
 /**
  * @file parsers/aPlusPlus/SubmissionParser.php
  *
- * Copyright (c) 2014-2025 Simon Fraser University
- * Copyright (c) 2000-2025 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class SubmissionParser
@@ -12,50 +12,35 @@
 
 namespace APP\plugins\importexport\articleImporter\parsers\aPlusPlus;
 
-use APP\plugins\importexport\articleImporter\ArticleImporterPlugin;
-
+use APP\facades\Repo;
 use DateInterval;
 use APP\submission\Submission;
 
 trait SubmissionParser
 {
-    /** @var Submission Submission instance */
-    private ?Submission $_submission = null;
-
-    /**
-     * Rollbacks the operation
-     */
-    private function _rollbackSubmission(): void
-    {
-        if ($this->_submission) {
-            Repo::submission()->delete($this->_submission);
-        }
-    }
-
     /**
      * Parses and retrieves the submission
      */
     public function getSubmission(): Submission
     {
-        if ($this->_submission) {
-            return $this->_submission;
+        if ($submission = $this->getCachedSubmission()) {
+            return $submission;
         }
 
-        $article = Application::getSubmissionDAO()->newDataObject();
-        $article->setData('contextId', $this->getContextId());
-        $article->setData('status', \STATUS_PUBLISHED);
-        $article->setData('submissionProgress', '');
-        $article->setData('stageId', \WORKFLOW_STAGE_ID_PRODUCTION);
-        $article->setData('sectionId', $this->getSection()->getId());
+        $submission = Repo::submission()->newDataObject();
+        $submission->setData('contextId', $this->getContextId());
+        $submission->setData('status', Submission::STATUS_PUBLISHED);
+        $submission->setData('submissionProgress', '');
+        $submission->setData('stageId', WORKFLOW_STAGE_ID_PRODUCTION);
+        $submission->setData('sectionId', $this->getSection()->getId());
         $date = $this->getDateFromNode($this->selectFirst('Journal/Volume/Issue/Article/ArticleInfo/ArticleHistory/RegistrationDate')) ?: $this->getPublicationDate()->add(new DateInterval('P1D'));
-        $article->setData('dateSubmitted', $date->format(ArticleImporterPlugin::DATETIME_FORMAT));
-
+        $submission->setData('dateSubmitted', $date->format(static::DATETIME_FORMAT));
         // Creates the submission
-        $this->_submission = Repo::submission()->add($article, Application::get()->getRequest());
-
+        Repo::submission()->dao->insert($submission);
+        $this->trackEntity($submission);
+        $this->setCachedSubmission($submission);
         $this->_assignEditor();
-
-        return $this->_submission;
+        return $submission;
     }
 
     /**

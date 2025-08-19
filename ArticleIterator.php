@@ -2,8 +2,8 @@
 /**
  * @file ArticleIterator.php
  *
- * Copyright (c) 2014-2025 Simon Fraser University
- * Copyright (c) 2000-2025 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class ArticleIterator
@@ -12,50 +12,29 @@
 
 namespace APP\plugins\importexport\articleImporter;
 
-class ArticleIterator extends \ArrayIterator
+use Generator;
+use IteratorAggregate;
+use SplFileInfo;
+
+class ArticleIterator implements IteratorAggregate
 {
-    /**
-     * Constructor
-     *
-     * @param string $path The base import path
-     */
+    /** @var string The path */
+    private string $path;
+
     public function __construct(string $path)
     {
-        parent::__construct($this->_getEntries($path));
+        $this->path = $path;
     }
 
     /**
-     * Retrieves a list of ArticleEntry with the paths that follow the folder convention
-     *
-     * @return ArticleEntry[]
+     * Retrieves the iterator
+     * @return iterable<ArticleEntry>
      */
-    private function _getEntries(string $path): array
+    public function getIterator(): Generator
     {
-        $directoryIterator = new \RecursiveDirectoryIterator($path);
-        $recursiveIterator = new \RecursiveIteratorIterator($directoryIterator, \RecursiveIteratorIterator::SELF_FIRST);
-        // Ignores deeper folders
-        $recursiveIterator->setMaxDepth(3);
-        $articleEntries = [];
-        foreach ($recursiveIterator as $file) {
-            // Capture all files in the article folder, even though we just need the xml and pdf
-            if ($recursiveIterator->getDepth() == 3 && $file->isFile()) {
-                // Gets the three nearest parent folders of the file (article > issue > volume) and tries to extract a number/ID from each of them
-                [$article, $issue, $volume] = array_map(function ($item) use ($file) {
-                    // Fails if the folder doesn't have a number
-                    if (!preg_match('/\d+/', $item->getFilename(), $order)) {
-                        throw new \Exception(__('plugins.importexport.articleImporter.invalidStructure', ['path' => $file->getPath()]));
-                    }
-                    return array_shift($order);
-                }, [$article = $file->getPathinfo(), $issue = $article->getPathinfo(), $volume = $issue->getPathinfo()]);
-
-                $key = "${volume}-${issue}-${article}";
-                ($articleEntries[$key] ?? $articleEntries[$key] = new ArticleEntry($volume, $issue, $article))
-                    ->addFile($file);
-            }
+        // volume/issue/article
+        foreach (glob("{$this->path}/*/*/*", GLOB_ONLYDIR) as $path) {
+            yield new ArticleEntry(new SplFileInfo($path));
         }
-        // Sorts the entries by key (at this point made up of "volume-issue-article")
-        ksort($articleEntries, \SORT_NATURAL);
-
-        return $articleEntries;
     }
 }

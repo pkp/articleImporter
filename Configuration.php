@@ -2,8 +2,8 @@
 /**
  * @file Configuration.php
  *
- * Copyright (c) 2014-2025 Simon Fraser University
- * Copyright (c) 2000-2025 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class Configuration
@@ -13,6 +13,8 @@
 namespace APP\plugins\importexport\articleImporter;
 
 use APP\core\Application;
+use Exception;
+use InvalidArgumentException;
 use PKP\db\DAORegistry;
 use PKP\security\Role;
 use PKP\context\Context;
@@ -27,7 +29,7 @@ class Configuration
     private string $_defaultSectionName;
     /** @var string[] List of classes that can parse XML articles */
     private array $_parsers;
-    /** @var \Context Context */
+    /** @var Context Context */
     private Context $_context;
     /** @var User User instance */
     private User $_user;
@@ -46,7 +48,11 @@ class Configuration
     /** @var string[] File extensions recognized as images */
     private array $_imageExt;
     /** @var string base filename for issue covers */
-    private string $_issueCoverFilename;
+    private string $_coverFilename;
+    /** @var bool use category as section */
+    private bool $_canUseCategoryAsSection = true;
+    /** @var bool Generate HTML from JATS files */
+    private bool $_generateHtml = true;
 
     /**
      * Constructor
@@ -58,42 +64,42 @@ class Configuration
      * @param string $email Default email when the author email is not provided in the XML
      * @param string $importPath Base path where the "volume/issue/article" structure is kept
      */
-    public function __construct(array $parsers, string $contextPath, string $username, string $editorUsername, string $email, string $importPath, string $defaultSectionName = 'Articles')
+    public function __construct(array $parsers, string $contextPath, string $username, string $editorUsername, string $email, string $importPath, string $defaultSectionName = 'Articles', bool $generateHtml = true)
     {
         $this->_defaultSectionName = $defaultSectionName;
         $this->_parsers = $parsers;
-
+        $this->_generateHtml = $generateHtml;
         if (!$this->_context = Application::getContextDAO()->getByPath($contextPath)) {
-            throw new \InvalidArgumentException(__('plugins.importexport.articleImporter.unknownJournal', ['journal' => $contextPath]));
+            throw new InvalidArgumentException(__('plugins.importexport.articleImporter.unknownJournal', ['journal' => $contextPath]));
         }
 
         [$this->_user, $this->_editor] = array_map(function ($username) {
             if (!$entity = Repo::user()->getByUsername($username)) {
-                throw new \InvalidArgumentException(__('plugins.importexport.articleImporter.unknownUser', ['username' => $username]));
+                throw new InvalidArgumentException(__('plugins.importexport.articleImporter.unknownUser', ['username' => $username]));
             }
             return $entity;
         }, [$username, $editorUsername]);
 
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            throw new \InvalidArgumentException(__('plugins.importexport.articleImporter.unknownEmail', ['email' => $email]));
+            throw new InvalidArgumentException(__('plugins.importexport.articleImporter.unknownEmail', ['email' => $email]));
         }
         $this->_email = $email;
 
         if (!is_dir($importPath)) {
-            throw new \InvalidArgumentException(__('plugins.importexport.articleImporter.directoryDoesNotExist', ['directory' => $importPath]));
+            throw new InvalidArgumentException(__('plugins.importexport.articleImporter.directoryDoesNotExist', ['directory' => $importPath]));
         }
         $this->_importPath = $importPath;
 
         // Finds the user group ID for the editor
         $editorUserGroups = Repo::userGroup()->getByRoleIds([Role::ROLE_ID_MANAGER], $this->_context->getId());
         foreach ($editorUserGroups as $userGroup) {
-            if (UserGroupStage::withUserGroupId($userGroup->id)->withStageId(\WORKFLOW_STAGE_ID_PRODUCTION)->count()) {
+            if (UserGroupStage::withUserGroupId($userGroup->id)->withStageId(WORKFLOW_STAGE_ID_PRODUCTION)->count()) {
                 $this->_editorGroupId = $userGroup->id;
                 break;
             }
         }
         if (!$this->_editorGroupId) {
-            throw new \Exception(__('plugins.importexport.articleImporter.missingEditorGroupId'));
+            throw new Exception(__('plugins.importexport.articleImporter.missingEditorGroupId'));
         }
 
         // Finds the user group ID for the authors
@@ -104,7 +110,7 @@ class Configuration
         $this->_genre = DAORegistry::getDAO('GenreDAO')->getByKey('SUBMISSION', $this->_context->getId());
 
         $this->_imageExt = ['tif', 'tiff', 'png', 'jpg', 'jpeg'];
-        $this->_issueCoverFilename = 'cover';
+        $this->_coverFilename = 'cover';
     }
 
     /**
@@ -134,7 +140,7 @@ class Configuration
     /**
      * Retrieves the default email which will be assigned to authors (when absent)
      *
-     * @return \Context
+     * @return Context
      */
     public function getEmail(): string
     {
@@ -214,8 +220,24 @@ class Configuration
     /**
      * Retrieves the base name for an issue cover file
      */
-    public function getIssueCoverFilename(): string
+    public function getCoverFilename(): string
     {
-        return $this->_issueCoverFilename;
+        return $this->_coverFilename;
+    }
+
+    /**
+     * Retrieves whether the category can be used as a section
+     */
+    public function canUseCategoryAsSection(): bool
+    {
+        return $this->_canUseCategoryAsSection;
+    }
+
+    /**
+     * Retrieves whether the HTML should be generated
+     */
+    public function shouldGenerateHtml(): bool
+    {
+        return $this->_generateHtml;
     }
 }
