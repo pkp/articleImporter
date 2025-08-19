@@ -1,63 +1,58 @@
 <?php
 /**
- * @file plugins/importexport/articleImporter/ArticleEntry.inc.php
+ * @file ArticleEntry.inc.php
  *
- * Copyright (c) 2014-2022 Simon Fraser University
- * Copyright (c) 2000-2022 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class ArticleEntry
  * @ingroup plugins_importexport_articleImporter
  *
- * @brief Glues together the volume/issue/article numbers and the article files
+ * @brief Represents an article entry with its basic identification and version management
  */
 
 namespace PKP\Plugins\ImportExport\ArticleImporter;
 
-use PKP\Plugins\ImportExport\ArticleImporter\Exceptions\InvalidDocTypeException;
-use PKP\Plugins\ImportExport\ArticleImporter\Exceptions\NoSuitableParserException;
+use Generator;
+use PKP\Plugins\ImportExport\ArticleImporter\Exceptions\ArticleSkippedException;
+use SplFileInfo;
 
 class ArticleEntry
 {
-    /** @var \SplFileInfo[] List of files */
-    private $_files = [];
-    /** @var int The article's number */
-    private $_volume;
-    /** @var int The issue's number */
-    private $_issue;
+    /** @var SplFileInfo The article directory */
+    private $_directory;
     /** @var int The issue's volume */
+    private $_volume;
+    /** @var string The issue's number */
+    private $_issue;
+    /** @var string The article's number */
     private $_article;
 
     /**
      * Constructor
      *
-     * @param int $volume The issue's volume
-     * @param int $issue The issue's number
-     * @param int $article The article's number
+     * @param SplFileInfo $directory The article directory
      */
-    public function __construct(int $volume, int $issue, int $article)
+    public function __construct(SplFileInfo $directory)
     {
-        $this->_volume = $volume;
-        $this->_issue = $issue;
-        $this->_article = $article;
+        $this->_directory = $directory;
+        foreach ([&$this->_article, &$this->_issue, &$this->_volume] as &$item) {
+            $item = $directory->getFilename();
+            $directory = $directory->getPathInfo();
+        }
     }
 
     /**
-     * Adds a file to the list
-     */
-    public function addFile(\SplFileInfo $file): void
-    {
-        $this->_files[] = $file;
-    }
-
-    /**
-     * Retrieves the file list
+     * Gets all available versions as a Generator
      *
-     * @return \SplFileInfo[]
+     * @return iterable<ArticleVersion> Yields ArticleVersion instances
      */
-    public function getFiles(): array
+    public function getVersions(): Generator
     {
-        return $this->_files;
+        foreach (glob("{$this->_directory->getPathname()}/*", GLOB_ONLYDIR) as $versionDir) {
+            yield new ArticleVersion($this, new SplFileInfo($versionDir));
+        }
     }
 
     /**
@@ -65,13 +60,13 @@ class ArticleEntry
      */
     public function getVolume(): int
     {
-        return $this->_volume;
+        return (int) $this->_volume;
     }
 
     /**
      * Retrieves the issue number
      */
-    public function getIssue(): int
+    public function getIssue(): string
     {
         return $this->_issue;
     }
@@ -79,101 +74,24 @@ class ArticleEntry
     /**
      * Retrieves the article number
      */
-    public function getArticle(): int
+    public function getArticle(): string
     {
         return $this->_article;
     }
 
     /**
-     * Returns the path to the folder containing the article files
+     * Processes the article
      */
-    public function getSubmissionPathInfo(): \SplFileInfo
+    public function process(Configuration $configuration): void
     {
-        return $this->getSubmissionFile()->getPathInfo();
-    }
-
-    /**
-     * Retrieves the submission file
-     *
-     * @throws \Exception Throws if there's more than one submission file
-     */
-    public function getSubmissionFile(): \SplFileInfo
-    {
-        $count = count($paths = array_filter($this->_files, function ($path) {
-            return preg_match('/\.pdf$/i', $path);
-        }));
-        if ($count != 1) {
-            throw new \Exception(__('plugins.importexport.articleImporter.unexpectedGalley', ['count' => $count]));
+        $processed = false;
+        foreach ($this->getVersions() as $version) {
+            $version->process($configuration);
+            $processed = true;
         }
-        return reset($paths);
-    }
 
-    /**
-     * Retrieves the metadata file
-     *
-     * @throws \Exception Throws if there's more than one metadata file
-     */
-    public function getMetadataFile(): \SplFileInfo
-    {
-        $count = count($paths = array_filter($this->_files, function ($path) {
-            return preg_match('/\.(meta|xml)$/i', $path);
-        }));
-        if ($count != 1) {
-            throw new \Exception(__('plugins.importexport.articleImporter.unexpectedMetadata', ['count' => $count]));
+        if (!$processed) {
+            throw new ArticleSkippedException('No versions were processed');
         }
-        return reset($paths);
-    }
-
-    /**
-     * Processes the entry
-     *
-     * @throws NoSuitableParserException Throws if no parser could understand the format
-     */
-    public function process(Configuration $configuration): BaseParser
-    {
-        foreach ($configuration->getParsers() as $parser) {
-            try {
-                $instance = new $parser($configuration, $this);
-                $instance->execute();
-                return $instance;
-            } catch (InvalidDocTypeException $e) {
-                // If the parser cannot understand the format, try the next
-                continue;
-            }
-        }
-        // If no parser could understand the format
-        throw new NoSuitableParserException(__('plugins.importexport.articleImporter.invalidDoctype'));
-    }
-
-    /**
-     * Retrieves the HTML galley file
-     *
-     * @throws \Exception Throws if there's more than one
-     */
-    public function getHtmlFile(): ?\SplFileInfo
-    {
-        $count = count($paths = array_filter($this->_files, function ($path) {
-            return preg_match('/\.html$/i', $path);
-        }));
-        if ($count > 1) {
-            throw new \Exception(__('plugins.importexport.articleImporter.unexpectedMetadata', ['count' => $count]));
-        }
-        return reset($paths) ?: null;
-    }
-
-	/**
-     * Retrieves the cover file
-     *
-     * @throws \Exception Throws if there's more than one cover file
-     */
-    public function getSubmissionCoverFile(): ?\SplFileInfo
-    {
-        $count = count($paths = array_filter($this->_files, function ($path) {
-            return preg_match('/article_cover\.[a-z]{3}/i', $path);
-        }));
-        if ($count > 1) {
-            throw new \Exception(__('plugins.importexport.articleImporter.unexpectedMetadata', ['count' => $count]));
-        }
-        return reset($paths) ?: null;
     }
 }

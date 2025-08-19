@@ -1,9 +1,9 @@
 <?php
 /**
- * @file plugins/importexport/articleImporter/Parser.inc.php
+ * @file Parser.inc.php
  *
- * Copyright (c) 2014-2022 Simon Fraser University
- * Copyright (c) 2000-2022 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class Parser
@@ -14,6 +14,8 @@
 
 namespace PKP\Plugins\ImportExport\ArticleImporter\Parsers\APlusPlus;
 
+use DateTimeImmutable;
+use DOMNode;
 use PKP\Plugins\ImportExport\ArticleImporter\BaseParser;
 
 class Parser extends BaseParser
@@ -26,37 +28,25 @@ class Parser extends BaseParser
     use AuthorParser;
 
     /**
-     * Retrieves the DOCTYPE
-     *
-     * @return array \DOMDocumentType[]
+     * Retrieves whether the parser can deal with the underlying document
      */
-    public function getDocType(): array
+    public function canParse(): bool
     {
-        return [(new \DOMImplementation())->createDocumentType('Publisher', '-//Springer-Verlag//DTD A++ V2.4//EN', 'http://devel.springer.de/A++/V2.4/DTD/A++V2.4.dtd')];
-    }
-
-    /**
-     * Rollbacks the process
-     */
-    public function rollback(): void
-    {
-        $this->_rollbackSection();
-        $this->_rollbackIssue();
-        $this->_rollbackSubmission();
+        return (bool) $this->selectFirst('Journal/Volume/Issue/Article/ArticleInfo/ArticleTitle');
     }
 
     /**
      * Given a nodes with month/year/day, tries to form a valid date string and retrieve a DateTimeImmutable
      */
-    public function getDateFromNode(?\DOMNode $node): ?\DateTimeImmutable
+    public function getDateFromNode(?DOMNode $node): ?DateTimeImmutable
     {
         if (!$node || !strlen($year = $this->selectText('Year', $node))) {
             return null;
         }
 
         $year = min((int) $year, date('Y'));
-        $month = str_pad(max((int) $this->selectText('Month', $node), 1), 2, '0', \STR_PAD_LEFT);
-        $day = str_pad(max((int) $this->selectText('Day', $node), 1), 2, '0', \STR_PAD_LEFT);
+        $month = str_pad(max((int) $this->selectText('Month', $node), 1), 2, '0', STR_PAD_LEFT);
+        $day = str_pad(max((int) $this->selectText('Day', $node), 1), 2, '0', STR_PAD_LEFT);
 
         if ($year < 100) {
             $currentYear = date('Y');
@@ -70,6 +60,6 @@ class Parser extends BaseParser
             return null;
         }
 
-        return new \DateTimeImmutable($year . '-' . $month . '-' . $day);
+        return new DateTimeImmutable($year . '-' . $month . '-' . $day);
     }
 }
