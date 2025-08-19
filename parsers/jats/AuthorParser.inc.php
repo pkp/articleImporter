@@ -50,12 +50,17 @@ trait AuthorParser
 
         $firstName = $this->selectText('given-names', $node);
         $lastName = $this->selectText('surname', $node);
+        $prefix = $this->selectText('prefix', $node);
+        $suffix = $this->selectText('suffix', $node);
         if ($lastName && !$firstName) {
             $firstName = $lastName;
             $lastName = '';
         } elseif (!$lastName && !$firstName) {
             $firstName = $this->getConfiguration()->getContext()->getName($this->getLocale());
         }
+        $firstName = ($prefix ? "{$prefix} " : '') . $firstName;
+        $lastName = $lastName . ($suffix ? " {$suffix}" : '');
+
         $email = $this->selectText('email', $authorNode);
         $orcid = $this->selectText("//uri[@content-type='orcid']", $authorNode);
         $affiliations = [];
