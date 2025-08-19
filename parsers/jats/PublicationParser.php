@@ -239,7 +239,7 @@ trait PublicationParser
 
         /** @var DOMElement $asset */
         foreach ($this->select('//asset|//graphic') as $asset) {
-            $assetFilename = mb_strtolower($asset->getAttribute($asset->nodeName === 'path' ? 'href' : 'xlink:href'));
+            $assetFilename = $asset->getAttribute($asset->nodeName === 'path' ? 'href' : 'xlink:href');
             $dependentFilePath = dirname($filename) . "/{$assetFilename}";
             if (file_exists($dependentFilePath)) {
                 $this->_createDependentFile($submission, $userId, $submissionFileId, $dependentFilePath);
