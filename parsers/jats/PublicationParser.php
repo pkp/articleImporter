@@ -188,7 +188,7 @@ trait PublicationParser
                 }
             }
             $label = $citation->getElementsByTagName('label')->item(0);
-            $citationData = $citation->getElementsByTagName('mixed-citation')->item(0);
+            $citationData = $this->convertJatsToHtml($citation->getElementsByTagName('mixed-citation')->item(0));
             $citationText = preg_replace(['/\r\n|\n\r|\r|\n/', '/\s{2,}/', '/\s+([,.])/'], [' ', ' ', '$1'], trim($citationData ? $citationData->textContent : ''));
             $citation->textContent = trim($label ? $label->textContent . ' ' : '') . $citationText . "\n";
             $document->preserveWhiteSpace = false;
@@ -602,7 +602,7 @@ trait PublicationParser
                                 foreach (iterator_to_array($node->getElementsByTagName('label')) as $label) {
                                     $label->parentNode->removeChild($label);
                                 }
-                                $this->fixJatsTags($node);
+                                $this->convertJatsToHtml($node);
                                 $bioNode = $node->ownerDocument->createElement('bio');
                                 foreach (iterator_to_array($node->childNodes) as $childNode) {
                                     $bioNode->appendChild($childNode);
