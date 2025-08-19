@@ -80,7 +80,7 @@ new function () {
 		this.handleEvent = function (event) {
 			event.preventDefault();
 			const id = event.currentTarget.hash.slice(1);
-			const target = document.body.querySelector(`[id=${id}]`);
+			const target = document.body.querySelector(`[id=${id}],[name=${id}]`);
 			if (target) {
 				backTo = event.currentTarget;
 				target.parentElement.insertBefore(backLink, target);
@@ -125,5 +125,7 @@ new function () {
 				});
 		});
 	};
-	parent.document.body.style.overflow = "hidden";
+	if (parent.document !== document) {
+		parent.document.body.style.overflow = "hidden";
+	}
 };
