@@ -123,8 +123,6 @@ class ArticleImporterPlugin extends ImportExportPlugin
     public function resequenceIssues(Configuration $configuration): void
     {
         $contextId = $configuration->getContext()->getId();
-        // Clears previous ordering
-        Repo::issue()->dao->deleteCustomIssueOrdering($contextId);
 
         // Retrieves issue IDs sorted by volume and number
         $issueCollector = Repo::issue()->getCollector();
@@ -140,6 +138,7 @@ class ArticleImporterPlugin extends ImportExportPlugin
         $latestIssue = null;
         foreach ($rsIssues as $id) {
             $latestIssue || ($latestIssue = $id);
+            Repo::issue()->dao->deleteCustomIssueOrdering($id);
             Repo::issue()->dao->insertCustomIssueOrder($contextId, $id, ++$sequence);
         }
 
