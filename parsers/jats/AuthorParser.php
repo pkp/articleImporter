@@ -2,8 +2,8 @@
 /**
  * @file parsers/jats/AuthorParser.php
  *
- * Copyright (c) 2014-2025 Simon Fraser University
- * Copyright (c) 2000-2025 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class AuthorParser
@@ -12,19 +12,21 @@
 
 namespace APP\plugins\importexport\articleImporter\parsers\jats;
 
+use APP\author\Author;
 use APP\publication\Publication;
-use PKP\db\DAORegistry;
 use APP\facades\Repo;
+use DOMElement;
+use DOMNode;
 
 trait AuthorParser
 {
     /** @var int Keeps the count of inserted authors */
-    private $_authorCount = 0;
+    private int $_authorCount = 0;
 
     /**
      * Processes all the authors
      */
-    private function _processAuthors(\Publication $publication): void
+    private function _processAuthors(Publication $publication): void
     {
         $firstAuthor = null;
         foreach ($this->select("front/article-meta/contrib-group[@content-type='authors']/contrib|front/article-meta/contrib-group/contrib[@contrib-type='author']") as $node) {
@@ -39,55 +41,125 @@ trait AuthorParser
     /**
      * Handles an author node
      */
-    private function _processAuthor(\Publication $publication, \DOMNode $authorNode): \Author
+    private function _processAuthor(Publication $publication, DOMNode $authorNode): Author
     {
         $node = $this->selectFirst('name|string-name', $authorNode);
 
         $firstName = $this->selectText('given-names', $node);
         $lastName = $this->selectText('surname', $node);
+        $prefix = $this->selectText('prefix', $node);
+        $suffix = $this->selectText('suffix', $node);
         if ($lastName && !$firstName) {
             $firstName = $lastName;
             $lastName = '';
         } elseif (!$lastName && !$firstName) {
             $firstName = $this->getConfiguration()->getContext()->getName($this->getLocale());
         }
-        $email = null;
+        $firstName = ($prefix ? "{$prefix} " : '') . $firstName;
+        $lastName = $lastName . ($suffix ? " {$suffix}" : '');
+        $email = $this->selectText('email', $authorNode);
+        $orcid = $this->selectText("//uri[@content-type='orcid']", $authorNode);
         $affiliations = [];
+        $biography = null;
+
+        $creditRoles = [];
+        /** @var DOMElement $node */
+        foreach ($this->select('role', $authorNode) as $node) {
+            if (!($role = $this->getCreditRole($node->getAttribute('content-type')) ?: $this->getCreditRole($node->textContent))) {
+                error_log("Unrecognized credit role: {$node->textContent}");
+                continue;
+            }
+            $creditRoles[] = $role;
+        }
 
         // Try to retrieve the affiliation and email
+        /** @var DOMElement $node */
         foreach ($this->select('xref', $authorNode) as $node) {
             $id = $node->getAttribute('rid');
             switch ($node->getAttribute('ref-type')) {
                 case 'aff':
-                    $affiliation = $this->selectText("../aff[@id='${id}']//institution", $authorNode) ?: $this->selectText("front/article-meta/aff[@id='${id}']//institution");
+                    $affiliation = $this->selectText("../aff[@id='{$id}']//institution", $authorNode) ?: $this->selectText("front/article-meta/aff[@id='{$id}']//institution");
                     if ($affiliation) {
                         $affiliations[] = $affiliation;
                     }
                     break;
                 case 'corresp':
-                    $email = $this->selectText("front/article-meta/author-notes/corresp[@id='${id}']//email");
+                    $email = $email ?: $this->selectText("front/article-meta/author-notes/corresp[@id='{$id}']//email");
                     break;
+                case 'fn':
+                    /** @var DOMElement $node */
+                    if ($node = $this->selectFirst("back/fn-group/fn[@id='{$id}']")) {
+                        $node = $node->cloneNode(true);
+                        /** @var DOMElement */
+                        foreach ($node->getElementsByTagName('email') as $emailNode) {
+                            $email = $email ?: $emailNode->textContent;
+                        }
+                        $this->convertJatsToHtml($node);
+                        $fragment = $node->ownerDocument->createDocumentFragment();
+                        foreach (iterator_to_array($node->childNodes) as $childNode) {
+                            $fragment->appendChild($childNode);
+                        }
+                        $biography = $node->ownerDocument->saveHTML($fragment);
+                    }
             }
         }
 
-        $email = $email ?: $this->selectText('email', $authorNode) ?: $this->getConfiguration()->getEmail();
+        foreach ($this->select('sup', $authorNode) as $node) {
+            $affiliation = '';
+            foreach ($this->select("../aff/label[.='{$node->textContent}']/following-sibling::node()", $authorNode) as $node) {
+                $affiliation .= $node->textContent;
+            }
+            if ($affiliation = preg_replace(['/\r\n|\n\r|\r|\n/', '/\s{2,}/', '/\s+([,.])/'], [' ', ' ', '$1'], trim($affiliation))) {
+                $affiliations[] = $affiliation;
+            }
+        }
 
-        $author = Repo::author()->dao->newDataObject();
+        $email = $email ?: $this->getConfiguration()->getEmail();
+
+        $author = Repo::author()->newDataObject();
         $author->setData('givenName', $firstName, $this->getLocale());
         if ($lastName) {
             $author->setData('familyName', $lastName, $this->getLocale());
         }
-        //$author->setData('preferredPublicName', "", $this->getLocale());
+
+        if ($orcid) {
+            $author->setData('orcid', $orcid);
+        }
+
         $author->setData('email', $email);
         $author->setData('affiliation', implode('; ', $affiliations), $this->getLocale());
+        $author->setData('biography', $biography, $this->getLocale());
         $author->setData('seq', $this->_authorCount + 1);
         $author->setData('publicationId', $publication->getId());
         $author->setData('includeInBrowse', true);
         $author->setData('primaryContact', !$this->_authorCount);
         $author->setData('userGroupId', $this->getConfiguration()->getAuthorGroupId());
+        $author->setData('creditRoles', $creditRoles);
 
         Repo::author()->add($author);
         ++$this->_authorCount;
         return $author;
+    }
+
+    private function getCreditRole(?string $role): ?string
+    {
+        $roles = [
+            'conceptualization' => 'http://credit.niso.org/contributor-roles/conceptualization/',
+            'data curation' => 'http://credit.niso.org/contributor-roles/data-curation/',
+            'formal analysis' => 'http://credit.niso.org/contributor-roles/formal-analysis/',
+            'funding acquisition' => 'http://credit.niso.org/contributor-roles/funding-acquisition/',
+            'investigation' => 'http://credit.niso.org/contributor-roles/investigation/',
+            'methodology' => 'http://credit.niso.org/contributor-roles/methodology/',
+            'project administration' => 'http://credit.niso.org/contributor-roles/project-administration/',
+            'resources' => 'http://credit.niso.org/contributor-roles/resources/',
+            'software' => 'http://credit.niso.org/contributor-roles/software/',
+            'supervision' => 'http://credit.niso.org/contributor-roles/supervision/',
+            'validation' => 'http://credit.niso.org/contributor-roles/validation/',
+            'visualization' => 'http://credit.niso.org/contributor-roles/visualization/',
+            'writing – original draft' => 'http://credit.niso.org/contributor-roles/writing-original-draft/',
+            'writing – original draft preparation' => 'http://credit.niso.org/contributor-roles/writing-original-draft/',
+            'writing – review & editing' => 'http://credit.niso.org/contributor-roles/writing-review-editing/'
+        ];
+        return array_key_exists($role = strtolower($role), $roles) ? $role : (array_search($role, $roles) ?: null);
     }
 }

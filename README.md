@@ -5,7 +5,7 @@ Plugin to import A++ and JATS articles up to OJS 3.4.0
 
 ### Import Files
 To get started you will need to request an export archive of your journal article metadata (metadata.xml) and galley files (fulltext.pdf) for all published articles.
-The plugin supports the following XML document types:
+The plugin has a generic format detection, as an example, the following XML document types are supported:
 - NLM: `<!DOCTYPE article SYSTEM "-//NLM//DTD Journal Archiving with OASIS Tables v3.0 20080202//EN" "http://dtd.nlm.nih.gov/archiving/3.0/archive-oasis-article3.dtd">`
 - JATS: `<!DOCTYPE article PUBLIC "-//EDP//DTD EDP Publishing JATS v1.0 20130606//EN" "JATS-edppublishing1.dtd">`
 - A++: `<!DOCTYPE Publisher PUBLIC "-//Springer-Verlag//DTD A++ V2.4//EN" "http://devel.springer.de/A++/V2.4/DTD/A++V2.4.dtd">`
@@ -19,27 +19,28 @@ You will need to review your metadata XML files and ensure that all required dat
 - volume/issue
 
 Import files will need to be placed in a directory on your OJS server, using the following path convention:
-- `xml/vol#/iss#/#`
+- `xml/volume#/issue#/article#/version#`
 
-where:
-- `xml` is the parent folder for all the exported articles,
-- `vol#` is the volume number folder that contains all issues for the volume
-- `iss#` is the issue number folder that contains all articles for the issue
-- `#` is the article # folder that contains the article metadata.xml and fulltext.pdf files
+Where:
+- `xml` is the parent folder for all the exported articles
+- `volume#` is the volume number folder that contains all issues for the volume
+- `issue#` is the issue number folder that contains all articles for the issue
+- `article#` is the article # folder that contains the  article metadata.xml and fulltext.pdf files
+- `version#` is the version # folder that contains the article metadata.xml and fulltext.pdf files
 
 All `#` designations will be treated as numeric values; e.g. 'no.01-02' will be interpreted as "1".
 
-The article folder must have only one XML file, with the extension of `.xml` or `.meta`, and only one fulltext PDF file, with the extension of `.pdf`.
+The article folder must have only one XML file, with the `.xml` extension, and only one fulltext PDF file, with the `.pdf` extension.
 
-A file named cover.tiff, cover.tif, cover.jpeg, cover.jpg, or cover.png may be placed in the `iss#` folder, and will become the issue cover image, if present.
+A file named cover.tiff, cover.tif, cover.jpeg, cover.jpg or cover.png may be placed in the `issue#` folder, and will become the issue cover image if present.
 
-If importing JATS, the original metadata XML will be added as a production ready file.  Dependent files as named in the XML (via `asset` or `graphic` elements) will be appended, if the files are found in the article folder.
+When importing JATS, the original metadata XML will be added as a production ready file, and dependent files extracted from the JATS (via `asset` or `graphic` elements) will be appended to the submission if the files exist in the folder. The plugin will also generate a HTML version of the JATS file and create a galley for it, unless you opt-out.
 
 Example structure:
 ```tree-view
 xml/
- ├── vol1/
- │    ├── i1/
+ ├── volume1/
+ │    ├── issue1/
  │    │   ├── cover.tif
  │    │   ├── 1/
  │    │   │   ├── metadata.xml
@@ -55,7 +56,7 @@ xml/
  │    │           ├── graph1.jpg
  │    │           ├── graph2.jpg
  │    │           └── graph3.jpg
- │    ├── i2/
+ │    ├── issue2/
  │    │   ├── 10/
  │    │   │   ├── 10.meta
  │    │   │   └── 10.pdf
@@ -63,8 +64,8 @@ xml/
  │    │       ├── metadata.xml
  │    │       └── fulltext.pdf
  │    └── ...
- └── vol2/
-      ├── i1/
+ └── volume2/
+      ├── issue1/
       │   ├── cover.jpg
       │   ├── 1/
       │   │   ├── metadata.xml
@@ -98,13 +99,15 @@ Login to your server and execute the following in your OJS source directory.
 
 `php tools/importExport.php ArticleImporterPlugin journal username editorUsername defaultEmail importPath`
 
-where:
+Where:
 
 - `journal`: the journal into which the articles should be imported (use the OJS journal path)
 - `username`: the user to whom imported articles should be assigned; note: this user must have the Author role
 - `editorUsername`: the editor to whom imported articles should be assigned; note: this user must have the Journal Editor role and access to the Production stage
 - `defaultEmail`: assigned to article metadata when author email not provided in import XML
 - `importPath`: full filepath to import files (e.g. /home/user/articleImporter_xml/journalName)
+
+If you're importing JATS content and you don't want the plugin to generate a HTML galley out of it, include the flag `--no-html`.
 
 ## Limitations
 
@@ -116,4 +119,4 @@ Please note the import plugin is intended for journal content only and does not 
 
 ## Bugs and Enhancements
 
-We welcome bug reports and fixes via github Issues for this project. Feature enhancements may also be contributed via pull requests for inclusion into the repository.
+We welcome bug reports and fixes via GitHub issues for this project. Feature enhancements may also be contributed via pull requests for inclusion into the repository.

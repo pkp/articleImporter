@@ -2,8 +2,8 @@
 /**
  * @file parsers/aPlusPlus/AuthorParser.php
  *
- * Copyright (c) 2014-2025 Simon Fraser University
- * Copyright (c) 2000-2025 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class AuthorParser
@@ -12,15 +12,15 @@
 
 namespace APP\plugins\importexport\articleImporter\parsers\aPlusPlus;
 
-use APP\db\DAORegistry;
 use APP\publication\Publication;
 use APP\author\Author;
 use APP\facades\Repo;
+use DOMElement;
 
 trait AuthorParser
 {
     /** @var int Keeps the count of inserted authors */
-    private $_authorCount = 0;
+    private int $_authorCount = 0;
 
     /**
      * Processes all the authors
@@ -40,7 +40,7 @@ trait AuthorParser
     /**
      * Handles an author node
      */
-    private function _processAuthor(Publication $publication, \DOMNode $authorNode): Author
+    private function _processAuthor(Publication $publication, DOMElement $authorNode): Author
     {
         $node = $this->selectFirst('AuthorName', $authorNode);
 
@@ -61,10 +61,10 @@ trait AuthorParser
         $affiliation = null;
         $ids = explode(' ', $authorNode->getAttribute('AffiliationIDS'));
         if ($affiliationId = $authorNode->getAttribute('CorrespondingAffiliationID') ?: reset($ids)) {
-            $affiliation = $this->selectText("Journal/Volume/Issue/Article/ArticleHeader/AuthorGroup/Affiliation[@ID='${affiliationId}']/OrgName");
+            $affiliation = $this->selectText("Journal/Volume/Issue/Article/ArticleHeader/AuthorGroup/Affiliation[@ID='{$affiliationId}']/OrgName");
         }
 
-        $author = Repo::author()->dao->newDataObject();
+        $author = Repo::author()->newDataObject();
         $author->setData('givenName', $firstName, $this->getLocale());
         if ($lastName) {
             $author->setData('familyName', $lastName, $this->getLocale());

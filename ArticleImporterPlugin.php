@@ -2,8 +2,8 @@
 /**
  * @file ArticleImporterPlugin.php
  *
- * Copyright (c) 2014-2025 Simon Fraser University
- * Copyright (c) 2000-2025 John Willinsky
+ * Copyright (c) 2020 Simon Fraser University
+ * Copyright (c) 2020 John Willinsky
  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
  *
  * @class ArticleImporterPlugin
@@ -12,22 +12,21 @@
 
 namespace APP\plugins\importexport\articleImporter;
 
+use APP\journal\JournalDAO;
 use APP\plugins\importexport\articleImporter\exceptions\ArticleSkippedException;
-
 use PKP\session\SessionManager;
 use PKP\core\Registry;
 use PKP\db\DAORegistry;
 use PKP\plugins\Hook;
 use APP\core\Application;
 use APP\core\PageRouter;
-use APP\core\Services;
 use PKP\plugins\PluginRegistry;
 use PKP\plugins\ImportExportPlugin;
 use APP\facades\Repo;
+use Throwable;
 
 class ArticleImporterPlugin extends ImportExportPlugin
 {
-    public const DATETIME_FORMAT = 'Y-m-d H:i:s';
 
     /**
      * @copydoc ImportExportPlugin::getDescription()
@@ -35,12 +34,13 @@ class ArticleImporterPlugin extends ImportExportPlugin
     public function executeCLI($scriptName, &$args): void
     {
         ini_set('memory_limit', -1);
+        ini_set('assert.exception', 0);
         SessionManager::getManager();
         // Disable the time limit
         set_time_limit(0);
 
         // Expects 5 non-empty arguments
-        if (count(array_filter($args, 'strlen')) != 5) {
+        if (count(array_filter($args, 'strlen')) < 5) {
             $this->usage($scriptName);
             return;
         }
@@ -56,18 +56,18 @@ class ArticleImporterPlugin extends ImportExportPlugin
                 $username,
                 $editorUsername,
                 $email,
-                $importPath
+                $importPath,
+                'Articles',
+                !in_array('--no-html', $args)
             );
 
             $this->_writeLine(__('plugins.importexport.articleImporter.importStart'));
 
-            // FIXME: This attaches the associated user to the request and is a workaround for no users being present
-            //     when running CLI tools. This assumes that given the username supplied should be used as the
-            //  authenticated user. To revisit later.
+            // FIXME: This attaches the associated user to the request and is a workaround for no users being present when running CLI tools.
             $user = $configuration->getUser();
             Registry::set('user', $user);
 
-            /** @var JournalDAO  */
+            /** @var JournalDAO */
             $journalDao = DAORegistry::getDAO('JournalDAO');
             $journal = $journalDao->getByPath($contextPath);
             // Set global context
@@ -84,23 +84,23 @@ class ArticleImporterPlugin extends ImportExportPlugin
 
             PluginRegistry::loadCategory('pubIds', true, $configuration->getContext()->getId());
 
-            $lastIssueId = null;
-
             // Iterates through all the found article entries, already sorted by ascending volume > issue > article
             $iterator = $configuration->getArticleIterator();
-            $count = count($iterator);
+            $count = 0;
+            /** @var ArticleEntry */
             foreach ($iterator as $entry) {
+                ++$count;
                 $article = implode('-', [$entry->getVolume(), $entry->getIssue(), $entry->getArticle()]);
                 try {
                     // Process the article
-                    $parser = $entry->process($configuration);
+                    $entry->process($configuration);
                     ++$imported;
                     $this->_writeLine(__('plugins.importexport.articleImporter.articleImported', ['article' => $article]));
                 } catch (ArticleSkippedException $e) {
-                    $this->_writeLine(__('plugins.importexport.articleImporter.articleSkipped', ['article' => $article, 'message' => $e->getMessage()]));
+                    $this->_writeLine(__('plugins.importexport.articleImporter.articleSkipped', ['article' => $article, 'message' => $e]));
                     ++$skipped;
-                } catch (\Exception $e) {
-                    $this->_writeLine(__('plugins.importexport.articleImporter.articleSkipped', ['article' => $article, 'message' => $e->getMessage()]));
+                } catch (Throwable $e) {
+                    $this->_writeLine(__('plugins.importexport.articleImporter.articleSkipped', ['article' => $article, 'message' => $e]));
                     ++$failed;
                 }
             }
@@ -111,8 +111,8 @@ class ArticleImporterPlugin extends ImportExportPlugin
             }
 
             $this->_writeLine(__('plugins.importexport.articleImporter.importEnd'));
-        } catch (\Exception $e) {
-            $this->_writeLine(__('plugins.importexport.articleImporter.importError', ['message' => $e->getMessage()]));
+        } catch (Throwable $e) {
+            $this->_writeLine(__('plugins.importexport.articleImporter.importError', ['message' => $e]));
         }
         $this->_writeLine(__('plugins.importexport.articleImporter.importStatus', ['count' => $count, 'imported' => $imported, 'failed' => $failed, 'skipped' => $skipped]));
     }
@@ -124,40 +124,36 @@ class ArticleImporterPlugin extends ImportExportPlugin
     {
         $contextId = $configuration->getContext()->getId();
 
-        // Clears previous ordering
-        Repo::issue()->dao->deleteCustomIssueOrdering($contextId);
-
         // Retrieves issue IDs sorted by volume and number
-	$issueCollector = Repo::issue()->getCollector();
+        $issueCollector = Repo::issue()->getCollector();
         $rsIssues = $issueCollector->filterByContextIds([$contextId])
-	    ->filterByPublished(true)
-	    ->orderBy($issueCollector::ORDERBY_SEQUENCE)
-	    ->getQueryBuilder()
-            ->orderBy('volume', 'DESC')
-            ->orderBy('number', 'DESC')
-            ->select('i.issue_id')
-            ->pluck('i.issue_id');
+            ->filterByPublished(true)
+            ->orderBy($issueCollector::ORDERBY_SEQUENCE)
+            ->getQueryBuilder()
+                ->orderBy('volume', 'DESC')
+                ->orderByRaw('CAST(number AS UNSIGNED) DESC')
+                ->select('i.issue_id')
+                ->pluck('i.issue_id');
         $sequence = 0;
         $latestIssue = null;
         foreach ($rsIssues as $id) {
             $latestIssue || ($latestIssue = $id);
+            Repo::issue()->dao->deleteCustomIssueOrdering($id);
             Repo::issue()->dao->insertCustomIssueOrder($contextId, $id, ++$sequence);
         }
 
         // Sets latest issue as the current one
         $latestIssue = Repo::issue()->get($latestIssue);
         $latestIssue->setData('current', true);
-        Repo::issue()->updateCurrent($configuration->getContext()->getId(), $latestIssue);
+        Repo::issue()->updateCurrent($contextId, $latestIssue);
     }
 
     /**
      * Outputs a message with a line break
-     *
-     * @param string $message
      */
-    private function _writeLine($message): void
+    private function _writeLine(?string $message): void
     {
-        echo $message, \PHP_EOL;
+        echo $message, PHP_EOL;
         flush();
     }
 
