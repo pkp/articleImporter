@@ -73,6 +73,7 @@ trait AuthorParser
         }
 
         // Try to retrieve the affiliation and email
+        /** @var DOMElement $node */
         foreach ($this->select('xref', $authorNode) as $node) {
             $id = $node->getAttribute('rid');
             switch ($node->getAttribute('ref-type')) {
