@@ -125,10 +125,10 @@ class ArticleImporterPlugin extends ImportExportPlugin
                     ++$imported;
                     $this->_writeLine(__('plugins.importexport.articleImporter.articleImported', ['article' => $article]));
                 } catch (ArticleSkippedException $e) {
-                    $this->_writeLine(__('plugins.importexport.articleImporter.articleSkipped', ['article' => $article, 'message' => $e->getMessage()]));
+                    $this->_writeLine(__('plugins.importexport.articleImporter.articleSkipped', ['article' => $article, 'message' => $e]));
                     ++$skipped;
                 } catch (Throwable $e) {
-                    $this->_writeLine(__('plugins.importexport.articleImporter.articleSkipped', ['article' => $article, 'message' => $e->getMessage()]));
+                    $this->_writeLine(__('plugins.importexport.articleImporter.articleSkipped', ['article' => $article, 'message' => $e]));
                     ++$failed;
                 }
             }
@@ -140,7 +140,7 @@ class ArticleImporterPlugin extends ImportExportPlugin
 
             $this->_writeLine(__('plugins.importexport.articleImporter.importEnd'));
         } catch (Throwable $e) {
-            $this->_writeLine(__('plugins.importexport.articleImporter.importError', ['message' => $e->getMessage()]));
+            $this->_writeLine(__('plugins.importexport.articleImporter.importError', ['message' => $e]));
         }
         $this->_writeLine(__('plugins.importexport.articleImporter.importStatus', ['count' => $count, 'imported' => $imported, 'failed' => $failed, 'skipped' => $skipped]));
     }
