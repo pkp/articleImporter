@@ -435,9 +435,10 @@ trait PublicationParser
             $content = preg_replace_callback('/src="([^"]*)"/', function ($match) use ($file, &$requiredFiles) {
                 [$match, $src] = $match;
                 $src = urldecode($src);
-                if ($src[0] === '/') {
+                if (($src[0] ?? '') === '/' || strpos($src, 'data:') === 0) {
                     return $match;
                 }
+
                 $realPath = "{$file->getPath()}/{$src}";
                 $extension = strtolower(pathinfo($realPath, PATHINFO_EXTENSION));
                 if (substr($extension, 0, 3) === 'tif') {
@@ -455,7 +456,7 @@ trait PublicationParser
                 if (filter_var($href[1], FILTER_VALIDATE_EMAIL, FILTER_FLAG_EMAIL_UNICODE)) {
                     $href[0] = str_replace($href[1], "mailto:{$href[1]}", $href[0]);
                 }
-                if ($href[1][0] === '#' && is_bool(strpos($content, 'id="' . substr($href[1], 1) . '"'))) {
+                if (($href[1][0] ?? '') === '#' && is_bool(strpos($content, 'id="' . substr($href[1], 1) . '"'))) {
                     echo __('plugins.importexport.articleImporter.warningMissingAnchor', ['anchor' => $href[1]]) . "\n";
                 }
                 return $href[0];
