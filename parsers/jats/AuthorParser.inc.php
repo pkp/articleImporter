@@ -96,7 +96,7 @@ trait AuthorParser
                         foreach ($node->getElementsByTagName('email') as $emailNode) {
                             $email = $email ?: $emailNode->textContent;
                         }
-                        $this->fixJatsTags($node);
+                        $this->convertJatsToHtml($node);
                         $fragment = $node->ownerDocument->createDocumentFragment();
                         foreach (iterator_to_array($node->childNodes) as $childNode) {
                             $fragment->appendChild($childNode);
