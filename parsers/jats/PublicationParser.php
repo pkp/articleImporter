@@ -31,7 +31,6 @@ use PKP\submissionFile\SubmissionFile;
 use APP\facades\Repo;
 use PKP\controlledVocab\ControlledVocab;
 use SplFileInfo;
-use Stringy\Stringy;
 use XSLTProcessor;
 
 trait PublicationParser
