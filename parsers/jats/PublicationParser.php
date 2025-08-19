@@ -161,7 +161,7 @@ trait PublicationParser
         // Store the JATS XML
         $this->_insertXMLSubmissionFile();
         // Process full text and generate HTML files
-        $this->_processFullText(true);
+        $this->_processFullText(false);
         $this->_insertHTMLGalley($publication);
         $this->_insertSupplementaryGalleys($publication);
 
