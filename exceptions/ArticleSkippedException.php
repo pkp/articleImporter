@@ -12,6 +12,8 @@
 
 namespace APP\plugins\importexport\articleImporter\exceptions;
 
-class ArticleSkippedException extends \Exception
+use Exception;
+
+class ArticleSkippedException extends Exception
 {
 }

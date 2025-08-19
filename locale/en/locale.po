@@ -66,9 +66,6 @@ msgstr "The user specified as editor is not assigned an Editor role."
 msgid "plugins.importexport.articleImporter.missingPubDate"
 msgstr "The article publication date is missing."
 
-msgid "plugins.importexport.articleImporter.invalidStructure"
-msgstr "The folder does not match the format \"volume #/issue #/article #\", found at \"{$path}\"."
-
 msgid "plugins.importexport.articleImporter.missingGalley"
 msgstr "The article galley is missing for \"{$article}\""
 
@@ -89,3 +86,15 @@ msgstr "The publication date is missing or invalid."
 
 msgid "plugins.importexport.articleImporter.articleSkipped"
 msgstr "Skipped {$article}: {$message}"
+
+msgid "plugins.importexport.articleImporter.duplicateWarning"
+msgstr "A submission with the {$type} {$id} already exists, importing anyway"
+
+msgid "plugins.importexport.articleImporter.tiffWarning"
+msgstr "A tiff image was found on the HTML file {$file}, and it's not web friendly, convert it to a web format"
+
+msgid "plugins.importexport.articleImporter.warningMissingFile"
+msgstr "The HTML file {$file}, references a file {$missingFile}, which wasn't found"
+
+msgid "plugins.importexport.articleImporter.warningMissingAnchor"
+msgstr "Anchor ID not found: {$anchor}"
