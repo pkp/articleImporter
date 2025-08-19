@@ -54,7 +54,7 @@ trait AuthorParser
             $firstName = $this->getConfiguration()->getContext()->getName($this->getLocale());
         }
         $email = $this->selectText('email', $authorNode);
-        $orcid = $this->selectText("uri[@content-type='orcid']", $authorNode);
+        $orcid = $this->selectText("//uri[@content-type='orcid']", $authorNode);
         $affiliations = [];
         $biography = null;
 
@@ -108,7 +108,7 @@ trait AuthorParser
         }
 
         if ($orcid) {
-            $author->setData('email', $orcid);
+            $author->setData('orcid', $orcid);
         }
 
         $author->setData('email', $email);
