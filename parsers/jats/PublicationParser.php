@@ -178,19 +178,14 @@ trait PublicationParser
     {
         $citations = '';
         foreach ($this->select('/article/back/ref-list/ref') as $citation) {
-            $document = new DOMDocument();
-            /** @var DOMElement */
-            foreach ($citation->getElementsByTagName('pub-id') as $pubId) {
-                $type = $pubId->attributes->getNamedItem('pub-id-type');
-                if ($type && $type->textContent === 'doi') {
-                    $doi = str_replace('https://doi.org/', '', $pubId->textContent);
-                    $pubId->textContent = '<a href="https://doi.org/' . $doi . '">https://doi.org/' . $doi . '</a>';
-                }
-            }
             $label = $citation->getElementsByTagName('label')->item(0);
-            $citationData = $this->convertJatsToHtml($citation->getElementsByTagName('mixed-citation')->item(0));
-            $citationText = preg_replace(['/\r\n|\n\r|\r|\n/', '/\s{2,}/', '/\s+([,.])/'], [' ', ' ', '$1'], trim($citationData ? $citationData->textContent : ''));
-            $citation->textContent = trim($label ? $label->textContent . ' ' : '') . $citationText . "\n";
+            $label = $label ? trim($label->textContent, "\n\r\t\v\0.") : '';
+            $label = $label ? "{$label}. " : '';
+            $citationNode = $this->convertJatsToHtml($citation->getElementsByTagName('mixed-citation')->item(0));
+            $citationText = $citationNode ? $citationNode->ownerDocument->saveXML($citationNode) : '';
+            $citationText = preg_replace(['/\r\n|\n\r|\r|\n/', '/\s{2,}/', '/\s+([,.])/'], [' ', ' ', '$1'], $citationText);
+            $citation->textContent = "{$label}{$citationText}\n";
+            $document = new DOMDocument();
             $document->preserveWhiteSpace = false;
             $document->loadXML($citation->C14N());
             $document->documentElement->normalize();
