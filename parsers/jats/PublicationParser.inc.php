@@ -153,7 +153,7 @@ trait PublicationParser
         // Store the JATS XML
         $this->_insertXMLSubmissionFile();
         // Process full text and generate HTML files
-        $this->_processFullText(true);
+        $this->_processFullText(false);
         $this->_insertHTMLGalley($publication);
         $this->_insertSupplementaryGalleys($publication);
 
@@ -709,7 +709,7 @@ trait PublicationParser
             if ($output === false) {
                 throw new Exception("Failed to create HTML file from JATS XML: \n" . print_r(libxml_get_errors(), true));
             }
-            $path = $metadata->getPathInfo() . '/' . $metadata->getBasename($metadata->getExtension()) . (count($langs) > 1 ? "-{$lang}" : '') . 'html';
+            $path = $metadata->getPathInfo() . '/' . $metadata->getBasename($metadata->getExtension()) . "{$lang}.html";
 
             file_put_contents($path, $output);
         }
