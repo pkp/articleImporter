@@ -15,13 +15,13 @@
 namespace APP\plugins\importexport\articleImporter;
 
 use APP\facades\Repo;
-use Category;
-use DAORegistry;
-use Genre;
-use GenreDAO;
-use Issue;
-use Section;
-use Submission;
+use APP\issue\Issue;
+use APP\section\Section;
+use APP\submission\Submission;
+use PKP\category\Category;
+use PKP\db\DAORegistry;
+use PKP\submission\Genre;
+use PKP\submission\GenreDAO;
 use Throwable;
 
 trait EntityManager

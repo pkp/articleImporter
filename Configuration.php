@@ -18,6 +18,7 @@ use InvalidArgumentException;
 use PKP\db\DAORegistry;
 use PKP\security\Role;
 use PKP\context\Context;
+use PKP\submission\GenreDAO;
 use PKP\user\User;
 use PKP\submission\Genre;
 use APP\facades\Repo;
@@ -107,7 +108,9 @@ class Configuration
         $this->_authorGroupId = $authorUserGroups->first()->id;
 
         // Retrieves the genre for submissions
-        $this->_genre = DAORegistry::getDAO('GenreDAO')->getByKey('SUBMISSION', $this->_context->getId());
+        /** @var GenreDAO $genreDao */
+        $genreDao = DAORegistry::getDAO('GenreDAO');
+        $this->_genre = $genreDao->getByKey('SUBMISSION', $this->_context->getId());
 
         $this->_imageExt = ['tif', 'tiff', 'png', 'jpg', 'jpeg'];
         $this->_coverFilename = 'cover';
