@@ -88,6 +88,7 @@ trait PublicationParser
         }
 
         // Set localized title/subtitle
+        /** @var DOMElement $node  */
         foreach ($this->select('front/article-meta/title-group/trans-title-group') as $node) {
             $locale = $this->getLocale($node->getAttribute('xml:lang'));
             if ($value = $this->selectText('trans-title', $this->clearXref($node))) {
@@ -106,6 +107,7 @@ trait PublicationParser
         $publication->setData('language', PKPLocale::getIso1FromLocale($this->getSubmission()->getData('locale')));
 
         // Set abstract
+        /** @var DOMElement $node  */
         foreach ($this->select('front/article-meta/abstract[not(@abstract-type="plain-language-summary")]|front/article-meta/trans-abstract[not(@abstract-type="plain-language-summary")]|front/article-meta/abstract|front/article-meta/trans-abstract') as $node) {
             $value = trim($this->getTextContent($node, function ($node, $content) {
                 // Transforms the known tags, the remaining ones will be stripped
@@ -170,6 +172,7 @@ trait PublicationParser
     private function _processCitations(Publication $publication): Publication
     {
         $citations = '';
+        /** @var DOMElement $citation  */
         foreach ($this->select('/article/back/ref-list/ref') as $citation) {
             $label = $citation->getElementsByTagName('label')->item(0);
             $label = $label ? trim($label->textContent, "\n\r\t\v\0.") : '';
@@ -231,6 +234,7 @@ trait PublicationParser
 
         $submissionFile = $submissionFileService->add($newSubmissionFile, Application::get()->getRequest());
 
+        /** @var DOMElement $asset */
         foreach ($this->select('//asset|//graphic') as $asset) {
             $assetFilename = mb_strtolower($asset->getAttribute($asset->nodeName === 'path' ? 'href' : 'xlink:href'));
             $dependentFilePath = dirname($filename) . "/{$assetFilename}";
@@ -390,6 +394,7 @@ trait PublicationParser
     {
         $articleEntry = $this->getArticleEntry();
         $ids = ['publisher-id' => "{$articleEntry->getVolume()}.{$articleEntry->getIssue()}.{$articleEntry->getArticle()}.{$this->getArticleVersion()->getVersion()}"];
+        /** @var DOMElement $node */
         foreach ($this->select('front/article-meta/article-id') as $node) {
             $ids[strtolower($node->getAttribute('pub-id-type'))] = $this->selectText('.', $node);
         }
@@ -403,6 +408,7 @@ trait PublicationParser
     {
         $node = null;
         // Find the most suitable pub-date node
+        /** @var DOMElement $node */
         foreach ($this->select('front/article-meta/pub-date') as $node) {
             if (in_array($node->getAttribute('pub-type'), ['given-online-pub', 'epub']) || $node->getAttribute('publication-format') == 'electronic') {
                 break;
@@ -516,6 +522,7 @@ trait PublicationParser
         /** @var SubmissionKeywordDAO */
         $submissionKeywordDAO = DAORegistry::getDAO('SubmissionKeywordDAO');
         $keywords = [];
+        /** @var DOMElement $node */
         foreach ($this->select('front/article-meta/kwd-group') as $node) {
             $locale = $this->getLocale($node->getAttribute('xml:lang'));
             foreach ($this->select('kwd', $node) as $node) {
@@ -533,6 +540,7 @@ trait PublicationParser
     private function _processCategories(Publication $publication): void
     {
         $categoryIds = [];
+        /** @var DOMElement $node */
         foreach ($this->select('front/article-meta/article-categories/subj-group') as $node) {
             $name = $this->selectText('subject', $node);
             $locale = $this->getLocale($node->getAttribute('xml:lang'));
@@ -596,6 +604,7 @@ trait PublicationParser
         $xpath->registerNamespace('xlink', 'http://www.w3.org/1999/xlink');
         $defaultLang = $xml->documentElement->getAttributeNS('http://www.w3.org/XML/1998/namespace', 'lang') ?: $this->getLocale();
         $langs = [$defaultLang => 0];
+        /** @var DOMElement $sec */
         foreach ($this->select("body//sec[@xml:lang!='{$defaultLang}']", null, $xpath) as $sec) {
             $langs[$sec->getAttributeNS('http://www.w3.org/XML/1998/namespace', 'lang')] = 0;
         }
@@ -605,6 +614,7 @@ trait PublicationParser
             $xpath = new DOMXPath($xml);
             $xpath->registerNamespace('xlink', 'http://www.w3.org/1999/xlink');
 
+            /** @var DOMElement $contribNode */
             foreach ($this->select('//contrib-group/contrib', null, $xpath) as $contribNode) {
                 $affiliations = [];
                 $xrefs = [];
