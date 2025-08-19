@@ -57,11 +57,20 @@ trait AuthorParser
         }
         $firstName = ($prefix ? "{$prefix} " : '') . $firstName;
         $lastName = $lastName . ($suffix ? " {$suffix}" : '');
-
         $email = $this->selectText('email', $authorNode);
         $orcid = $this->selectText("//uri[@content-type='orcid']", $authorNode);
         $affiliations = [];
         $biography = null;
+
+        $creditRoles = [];
+        /** @var DOMElement $node */
+        foreach ($this->select('role', $authorNode) as $node) {
+            if (!($role = $this->getCreditRole($node->getAttribute('content-type')) ?: $this->getCreditRole($node->textContent))) {
+                error_log("Unrecognized credit role: {$node->textContent}");
+                continue;
+            }
+            $creditRoles[] = $role;
+        }
 
         // Try to retrieve the affiliation and email
         foreach ($this->select('xref', $authorNode) as $node) {
@@ -124,9 +133,32 @@ trait AuthorParser
         $author->setData('includeInBrowse', true);
         $author->setData('primaryContact', !$this->_authorCount);
         $author->setData('userGroupId', $this->getConfiguration()->getAuthorGroupId());
+        $author->setData('creditRoles', $creditRoles);
 
         Repo::author()->add($author);
         ++$this->_authorCount;
         return $author;
+    }
+
+    private function getCreditRole(?string $role): ?string
+    {
+        $roles = [
+            'conceptualization' => 'http://credit.niso.org/contributor-roles/conceptualization/',
+            'data curation' => 'http://credit.niso.org/contributor-roles/data-curation/',
+            'formal analysis' => 'http://credit.niso.org/contributor-roles/formal-analysis/',
+            'funding acquisition' => 'http://credit.niso.org/contributor-roles/funding-acquisition/',
+            'investigation' => 'http://credit.niso.org/contributor-roles/investigation/',
+            'methodology' => 'http://credit.niso.org/contributor-roles/methodology/',
+            'project administration' => 'http://credit.niso.org/contributor-roles/project-administration/',
+            'resources' => 'http://credit.niso.org/contributor-roles/resources/',
+            'software' => 'http://credit.niso.org/contributor-roles/software/',
+            'supervision' => 'http://credit.niso.org/contributor-roles/supervision/',
+            'validation' => 'http://credit.niso.org/contributor-roles/validation/',
+            'visualization' => 'http://credit.niso.org/contributor-roles/visualization/',
+            'writing – original draft' => 'http://credit.niso.org/contributor-roles/writing-original-draft/',
+            'writing – original draft preparation' => 'http://credit.niso.org/contributor-roles/writing-original-draft/',
+            'writing – review & editing' => 'http://credit.niso.org/contributor-roles/writing-review-editing/'
+        ];
+        return array_key_exists($role = strtolower($role), $roles) ? $role : (array_search($role, $roles) ?: null);
     }
 }
