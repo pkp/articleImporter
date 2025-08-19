@@ -210,9 +210,6 @@ or pipeline) parameterized.
 
   <xsl:variable name="verbose" select="$report-warnings='yes'"/>
 
-  <xsl:variable name="lowercase" select="'abcdefghijklmnopqrstuvwxyz'" />
-  <xsl:variable name="uppercase" select="'ABCDEFGHIJKLMNOPQRSTUVWXYZ'" />
-
   <!-- Keys -->
 
   <!-- To reduce dependency on a DTD for processing, we declare
@@ -2071,7 +2068,7 @@ or pipeline) parameterized.
   <xsl:template match="graphic | inline-graphic">
     <xsl:apply-templates/>
 
-    <a href="{translate(@xlink:href, $uppercase, $lowercase)}" target="_new">
+    <a href="{@xlink:href}" target="_new">
       <img loading="lazy" alt="{@xlink:href}">
         <xsl:for-each select="alt-text">
           <xsl:attribute name="alt">
@@ -3604,7 +3601,7 @@ or pipeline) parameterized.
   <xsl:template name="assign-src">
     <xsl:for-each select="@xlink:href">
       <xsl:attribute name="src">
-        <xsl:value-of select="translate(., $uppercase, $lowercase)"/>
+        <xsl:value-of select="."/>
       </xsl:attribute>
     </xsl:for-each>
   </xsl:template>
