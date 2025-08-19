@@ -13,6 +13,7 @@
 namespace APP\plugins\importexport\articleImporter\parsers\aPlusPlus;
 
 use DateTimeImmutable;
+use DOMElement;
 use Exception;
 use PKP\core\Core;
 use PKP\Services\PKPFileService;
@@ -59,6 +60,7 @@ trait PublicationParser
         $publicationLocale = null;
 
         // Set title
+        /** @var DOMElement $node */
         foreach ($this->select('Journal/Volume/Issue/Article/ArticleInfo/ArticleTitle') as $node) {
             $locale = $this->getLocale($node->getAttribute('Language'));
             // The publication language is defined by the first title node
@@ -78,11 +80,13 @@ trait PublicationParser
         $publication->setData('language', LocaleConversion::getIso1FromLocale($publicationLocale));
 
         // Set subtitle
+        /** @var DOMElement $node */
         foreach ($this->select('Journal/Volume/Issue/Article/ArticleInfo/ArticleSubTitle') as $node) {
             $publication->setData('subtitle', $this->selectText('.', $node), $this->getLocale($node->getAttribute('Language')));
         }
 
         // Set article abstract
+        /** @var DOMElement $abstract */
         foreach ($this->select('Journal/Volume/Issue/Article/ArticleHeader/Abstract') as $abstract) {
             $value = trim($this->getTextContent($abstract, function ($node, $content) use ($abstract) {
                 // Ignores the main Heading tag
@@ -251,6 +255,7 @@ trait PublicationParser
     private function _processKeywords(Publication $publication): void
     {
         $keywords = [];
+        /** @var DOMElement $node */
         foreach ($this->select('Journal/Volume/Issue/Article/ArticleHeader/KeywordGroup') as $node) {
             $locale = $this->getLocale($node->getAttribute('Language'));
             foreach ($this->select('Keyword', $node) as $node) {
