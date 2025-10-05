@@ -102,7 +102,7 @@ trait PublicationParser
 
         // Set abstract
         /** @var DOMElement $node  */
-        foreach ($this->select('front/article-meta/abstract[not(@abstract-type="plain-language-summary")]|front/article-meta/trans-abstract[not(@abstract-type="plain-language-summary")]|front/article-meta/abstract|front/article-meta/trans-abstract') as $node) {
+        foreach ($this->select('front/article-meta/abstract|front/article-meta/trans-abstract') as $node) {
             $value = trim($this->getTextContent($node, function ($node, $content) {
                 // Transforms the known tags, the remaining ones will be stripped
                 $tag = [
@@ -114,9 +114,8 @@ trait PublicationParser
                 ][$node->nodeName] ?? null;
                 return $tag ? "<{$tag}>{$content}</{$tag}>" : $content;
             }));
-            $locale = $this->getLocale($node->getAttribute('xml:lang'));
-            if ($value && !$publication->getData('abstract', $locale)) {
-                $publication->setData('abstract', $value, $locale);
+            if ($value) {
+                $publication->setData(strtolower($node->getAttribute('abstract-type') ?? '') === 'plain-language-summary' ? 'plainLanguageSummary' : 'abstract', $value, $this->getLocale($node->getAttribute('xml:lang')));
             }
         }
 
