@@ -35,7 +35,7 @@ trait SectionParser
         $sectionName = null;
         $locale = $this->getLocale();
 
-        if ($this->getConfiguration()->canUseCategoryAsSection()) {
+        if ($this->getConfiguration()->useCategoryAsSection()) {
             // Retrieves the section name and locale
             $node = $this->selectFirst('Journal/Volume/Issue/Article/ArticleInfo/ArticleCategory');
             if ($node) {

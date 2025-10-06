@@ -47,6 +47,10 @@ class ArticleImporterPlugin extends ImportExportPlugin
         // Map arguments to variables
         [$contextPath, $username, $editorUsername, $email, $importPath] = $args;
 
+        // Parse command-line flags
+        $generateHtml = !in_array('--no-html', $args);
+        $useCategoryAsSection = in_array('--use-category-as-section', $args);
+
         $count = $imported = $failed = $skipped = 0;
         try {
             $configuration = new Configuration(
@@ -57,7 +61,8 @@ class ArticleImporterPlugin extends ImportExportPlugin
                 $email,
                 $importPath,
                 'Articles',
-                !in_array('--no-html', $args)
+                $generateHtml,
+                $useCategoryAsSection
             );
 
             $this->_writeLine(__('plugins.importexport.articleImporter.importStart'));

@@ -517,6 +517,10 @@ trait PublicationParser
      */
     private function _processCategories(Publication $publication): void
     {
+        if (!$this->getConfiguration()->useCategoryAsSection()) {
+            return;
+        }
+
         $categoryIds = [];
         /** @var DOMElement $node */
         foreach ($this->select('front/article-meta/article-categories/subj-group') as $node) {

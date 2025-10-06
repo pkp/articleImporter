@@ -51,7 +51,7 @@ class Configuration
     /** @var string base filename for issue covers */
     private string $_coverFilename;
     /** @var bool use category as section */
-    private bool $_canUseCategoryAsSection = true;
+    private bool $_useCategoryAsSection = true;
     /** @var bool Generate HTML from JATS files */
     private bool $_generateHtml = true;
 
@@ -64,12 +64,16 @@ class Configuration
      * @param string $editorUsername Editor to whom imported articles should be assigned
      * @param string $email Default email when the author email is not provided in the XML
      * @param string $importPath Base path where the "volume/issue/article" structure is kept
+     * @param string $defaultSectionName Default section name
+     * @param bool $generateHtml Whether to generate HTML from JATS files
+     * @param bool $useCategoryAsSection Whether to use category as section
      */
-    public function __construct(array $parsers, string $contextPath, string $username, string $editorUsername, string $email, string $importPath, string $defaultSectionName = 'Articles', bool $generateHtml = true)
+    public function __construct(array $parsers, string $contextPath, string $username, string $editorUsername, string $email, string $importPath, string $defaultSectionName = 'Articles', bool $generateHtml = true, bool $useCategoryAsSection = false)
     {
         $this->_defaultSectionName = $defaultSectionName;
         $this->_parsers = $parsers;
         $this->_generateHtml = $generateHtml;
+        $this->_useCategoryAsSection = $useCategoryAsSection;
         if (!$this->_context = Application::getContextDAO()->getByPath($contextPath)) {
             throw new InvalidArgumentException(__('plugins.importexport.articleImporter.unknownJournal', ['journal' => $contextPath]));
         }
@@ -229,11 +233,11 @@ class Configuration
     }
 
     /**
-     * Retrieves whether the category can be used as a section
+     * Retrieves whether the category should be used as a section
      */
-    public function canUseCategoryAsSection(): bool
+    public function useCategoryAsSection(): bool
     {
-        return $this->_canUseCategoryAsSection;
+        return $this->_useCategoryAsSection;
     }
 
     /**

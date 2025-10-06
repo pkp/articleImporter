@@ -35,7 +35,7 @@ trait SectionParser
         $sectionName = null;
         $locale = $this->getLocale();
 
-        if ($this->getConfiguration()->canUseCategoryAsSection()) {
+        if ($this->getConfiguration()->useCategoryAsSection()) {
             // Retrieves the section name and locale
             $node = $this->selectFirst('front/article-meta/article-categories/subj-group');
             if ($node) {
