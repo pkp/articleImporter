@@ -69,7 +69,7 @@ trait AuthorParser
                 error_log("Unrecognized credit role: {$node->textContent}");
                 continue;
             }
-            $creditRoles[] = $role;
+            $creditRoles[] = ['role' => $role];
         }
 
         // Try to retrieve the affiliation and email
@@ -144,21 +144,21 @@ trait AuthorParser
     private function getCreditRole(?string $role): ?string
     {
         $roles = [
-            'conceptualization' => 'http://credit.niso.org/contributor-roles/conceptualization/',
-            'data curation' => 'http://credit.niso.org/contributor-roles/data-curation/',
-            'formal analysis' => 'http://credit.niso.org/contributor-roles/formal-analysis/',
-            'funding acquisition' => 'http://credit.niso.org/contributor-roles/funding-acquisition/',
-            'investigation' => 'http://credit.niso.org/contributor-roles/investigation/',
-            'methodology' => 'http://credit.niso.org/contributor-roles/methodology/',
-            'project administration' => 'http://credit.niso.org/contributor-roles/project-administration/',
-            'resources' => 'http://credit.niso.org/contributor-roles/resources/',
-            'software' => 'http://credit.niso.org/contributor-roles/software/',
-            'supervision' => 'http://credit.niso.org/contributor-roles/supervision/',
-            'validation' => 'http://credit.niso.org/contributor-roles/validation/',
-            'visualization' => 'http://credit.niso.org/contributor-roles/visualization/',
-            'writing – original draft' => 'http://credit.niso.org/contributor-roles/writing-original-draft/',
-            'writing – original draft preparation' => 'http://credit.niso.org/contributor-roles/writing-original-draft/',
-            'writing – review & editing' => 'http://credit.niso.org/contributor-roles/writing-review-editing/'
+            'https://credit.niso.org/contributor-roles/conceptualization/' => 'conceptualization',
+            'https://credit.niso.org/contributor-roles/data-curation/' => 'data curation',
+            'https://credit.niso.org/contributor-roles/formal-analysis/' => 'formal analysis',
+            'https://credit.niso.org/contributor-roles/funding-acquisition/' => 'funding acquisition',
+            'https://credit.niso.org/contributor-roles/investigation/' => 'investigation',
+            'https://credit.niso.org/contributor-roles/methodology/' => 'methodology',
+            'https://credit.niso.org/contributor-roles/project-administration/' => 'project administration',
+            'https://credit.niso.org/contributor-roles/resources/' => 'resources',
+            'https://credit.niso.org/contributor-roles/software/' => 'software',
+            'https://credit.niso.org/contributor-roles/supervision/' => 'supervision',
+            'https://credit.niso.org/contributor-roles/validation/' => 'validation',
+            'https://credit.niso.org/contributor-roles/visualization/' => 'visualization',
+            'https://credit.niso.org/contributor-roles/writing-original-draft/' => 'writing – original draft',
+            'https://credit.niso.org/contributor-roles/writing-original-draft/' => 'writing – original draft preparation',
+            'https://credit.niso.org/contributor-roles/writing-review-editing/' => 'writing – review & editing'
         ];
         return array_key_exists($role = strtolower($role), $roles) ? $role : (array_search($role, $roles) ?: null);
     }
