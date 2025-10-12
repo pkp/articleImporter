@@ -43,7 +43,7 @@ trait IssueParser
         $document = new DOMDocument('1.0', 'utf-8');
         $path = $this->getArticleVersion()->getMetadataFile()->getPathInfo()->getPathInfo();
         $issueMetaPath = $path . '/' . $path->getBasename() . '/' . $path->getBasename() . '.xml';
-        if (file_exists($issueMetaPath)) {
+        if (!file_exists($issueMetaPath)) {
             return $this->_issueMeta = [
                 'date' => null,
                 'title' => null,

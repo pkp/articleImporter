@@ -77,9 +77,9 @@ class ArticleImporterPlugin extends ImportExportPlugin
             // Set global context
             $request = Application::get()->getRequest();
             if (!$request->getContext()) {
-                Hook::add('Router::getRequestedContextPaths', function (string $hook, array $args) use ($journal): bool {
-                    $args[0] = [$journal->getPath()];
-                    return false;
+                Hook::add('Router::getRequestedContextPath', function (string $hook, array $args) use ($journal): bool {
+                    $args[0] = $journal->getPath();
+                    return Hook::CONTINUE;
                 });
                 $router = new PageRouter();
                 $router->setApplication(Application::get());
