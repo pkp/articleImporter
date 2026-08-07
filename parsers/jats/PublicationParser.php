@@ -30,6 +30,7 @@ use PKP\core\Core;
 use APP\core\Application;
 use PKP\i18n\LocaleConversion;
 use PKP\submission\Genre;
+use PKP\submissionFile\enums\MediaVariantType;
 use PKP\submissionFile\SubmissionFile;
 use APP\facades\Repo;
 use PKP\controlledVocab\ControlledVocab;
@@ -310,7 +311,7 @@ trait PublicationParser
             $assetFilename = $asset->getAttribute($asset->nodeName === 'path' ? 'href' : 'xlink:href');
             $dependentFilePath = dirname($filename) . "/{$assetFilename}";
             if (file_exists($dependentFilePath)) {
-                $this->_createDependentFile($submission, $userId, $submissionFileId, $dependentFilePath);
+                $this->_createDependentFile($submission, $userId, $publication, $dependentFilePath);
             }
         }
     }
@@ -318,8 +319,13 @@ trait PublicationParser
     /**
      * Creates a dependent file
      */
-    protected function _createDependentFile(Submission $submission, int $userId, int $submissionFileId, string $filePath)
+    protected function _createDependentFile(Submission $submission, int $userId, Publication $publication, string $filePath)
     {
+        if ($this->_dependentFiles[$filePath] ?? false) {
+            return;
+        }
+
+        $this->_dependentFiles[$filePath] = true;
         $filename = basename($filePath);
         $fileType = pathinfo($filePath, PATHINFO_EXTENSION);
         $genreId = $this->getCachedGenre($fileType)->getId();
@@ -332,20 +338,20 @@ trait PublicationParser
         $newSubmissionFile = Repo::submissionFile()->newDataObject();
         $newSubmissionFile->setData('submissionId', $submission->getId());
         $newSubmissionFile->setData('fileId', $newFileId);
-        $newSubmissionFile->setData('fileStage', SubmissionFile::SUBMISSION_FILE_DEPENDENT);
+        $newSubmissionFile->setData('fileStage', SubmissionFile::SUBMISSION_FILE_MEDIA);
         $newSubmissionFile->setData('genreId', $genreId);
         $newSubmissionFile->setData('createdAt', Core::getCurrentDate());
         $newSubmissionFile->setData('updatedAt', Core::getCurrentDate());
         $newSubmissionFile->setData('uploaderUserId', $userId);
-        $newSubmissionFile->setData('assocType', Application::ASSOC_TYPE_SUBMISSION_FILE);
-        $newSubmissionFile->setData('assocId', $submissionFileId);
+        $newSubmissionFile->setData('assocType', Application::ASSOC_TYPE_PUBLICATION);
+        $newSubmissionFile->setData('assocId', $publication->getId());
         $newSubmissionFile->setData('name', $filename, $this->getLocale());
         // Expect properties to be stored as empty for artwork metadata
         $newSubmissionFile->setData('caption', '');
         $newSubmissionFile->setData('credit', '');
         $newSubmissionFile->setData('copyrightOwner', '');
         $newSubmissionFile->setData('terms', '');
-
+        $newSubmissionFile->setData('variantType', MediaVariantType::WEB);
         Repo::submissionFile()->add($newSubmissionFile);
     }
 
@@ -553,7 +559,7 @@ trait PublicationParser
 
             /** @var SplFileInfo */
             foreach ($requiredFiles as $path) {
-                $this->_createDependentFile($submission, $userId, $submissionFileId, $path);
+                $this->_createDependentFile($submission, $userId, $publication, $path);
             }
 
             $galley = Repo::galley()->get($newGalleyId);
