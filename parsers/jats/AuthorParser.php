@@ -78,7 +78,11 @@ trait AuthorParser
             $id = $node->getAttribute('rid');
             switch ($node->getAttribute('ref-type')) {
                 case 'aff':
-                    $affiliation = $this->selectText("../aff[@id='{$id}']//institution", $authorNode) ?: $this->selectText("front/article-meta/aff[@id='{$id}']//institution");
+                    $affiliationNode = $this->selectFirst("../aff[@id='{$id}']", $authorNode) ?: $this->selectFirst("front/article-meta/aff[@id='{$id}']");
+                    if (!$affiliationNode) {
+                        break;
+                    }
+                    $affiliation = $this->selectText(".//institution", $affiliationNode) ?: $this->selectText(".", $affiliationNode);
                     if ($affiliation) {
                         $affiliations[] = $affiliation;
                     }
@@ -127,7 +131,6 @@ trait AuthorParser
         }
 
         $author->setData('email', $email);
-        $author->setData('affiliation', implode('; ', $affiliations), $this->getLocale());
         $author->setData('biography', $biography, $this->getLocale());
         $author->setData('seq', $this->_authorCount + 1);
         $author->setData('publicationId', $publication->getId());
@@ -135,8 +138,21 @@ trait AuthorParser
         $author->setData('primaryContact', !$this->_authorCount);
         $author->setData('userGroupId', $this->getConfiguration()->getAuthorGroupId());
         $author->setData('creditRoles', $creditRoles);
-
-        Repo::author()->add($author);
+        $authorId = Repo::author()->add($author);
+        $author = Repo::author()->get($authorId);
+        $affiliationObjects = [];
+        foreach ($affiliations as $name) {
+            $affiliation = Repo::affiliation()->newDataObject(['authorId' => $author->getId()]);
+            $ror = $this->getCachedROR($name);
+            if ($ror) {
+                $affiliation->setRor($ror->getRor());
+            } else {
+                $affiliation->setName($name, $this->getLocale());
+            }
+            $affiliationObjects[] = $affiliation;
+        }
+        $author->setAffiliations($affiliationObjects);
+        Repo::author()->edit($author);
         ++$this->_authorCount;
         return $author;
     }
